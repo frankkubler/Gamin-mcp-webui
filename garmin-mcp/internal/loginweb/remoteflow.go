@@ -94,58 +94,8 @@ func (s *RemoteServer) resolvePrincipal(
 		s.abandon(w, session)
 		return
 	}
-	if !s.approvedAccount(w, r, session, attempt.Principal) {
-		return
-	}
 	s.log(r.Context(), "a garmin login resolved a principal")
 	http.Redirect(w, r, routeRemoteConsent, http.StatusSeeOther)
-}
-
-// approvedAccount stops an account the operator has not approved, and reports whether
-// the login may go on.
-//
-// The check sits here, right after the Garmin login resolved a principal and before
-// anything is offered to grant, so a held account never reaches the consent page and
-// no acceptance, code or token is produced for it. The account itself exists by this
-// point — it had to, for the operator to have something to approve — and the page the
-// person is shown says so, with the privacy notice on it, because their data is
-// already stored whether or not the decision ever comes.
-//
-// A nil Approvals turns the gate off: that is the upstream behaviour, and the
-// composition root supplies one only when the operator asked for the gate.
-func (s *RemoteServer) approvedAccount(
-	w http.ResponseWriter, r *http.Request, session *remoteSession, principal string,
-) bool {
-	if s.approvals == nil {
-		return true
-	}
-	approved, err := s.approvals.AccountApproved(r.Context(), principal)
-	if err != nil {
-		// The same reasoning as the privacy store: neither answer is safe to
-		// assume. "Approved" would let a held account through, and "held" would
-		// tell someone their account is waiting when nobody knows.
-		s.unavailable(w)
-		return false
-	}
-	if approved {
-		return true
-	}
-
-	// The transaction is closed rather than left to expire: nothing is granted, and
-	// the client's own record of it ends now. The denial's redirect target is
-	// discarded on purpose — the person stays here, on a page that explains the
-	// wait, instead of being bounced back to a client that would only say "denied".
-	if _, denyErr := s.authorizations.Deny(r.Context(), session.capability); denyErr != nil {
-		s.log(r.Context(), "closing the transaction of a held account failed")
-	}
-	s.discard(session)
-	s.clearCookie(w)
-	s.log(r.Context(), "an account is waiting for the operator's approval")
-
-	data := emptyRemoteData("")
-	data.Privacy = privacyState{Version: s.notice.version}
-	s.pages.render(w, http.StatusForbidden, pagePending, data)
-	return false
 }
 
 // handleConsentForm renders the binding decision: the same client, redirect host,
@@ -165,51 +115,88 @@ func (s *RemoteServer) handleConsentForm(w http.ResponseWriter, r *http.Request)
 	// redirect to the client's origin is one of those hops, so the origin belongs
 	// here, on the GET response, not on the POST response the browser never
 	// consults for this check.
-	privacy, ok := s.privacyFor(w, r, session)
+	context, ok := s.consentContext(w, r, session)
 	if !ok {
 		return
 	}
 	setOutboundRedirectCSP(w, disclosure.RedirectURI)
 	s.pages.render(w, http.StatusOK, pageConsent,
-		s.consentData(session, disclosure, privacy, ""))
+		s.consentData(session, disclosure, context, ""))
 }
 
-// privacyFor resolves what the consent page must say about the notice, answering the
-// request itself when it cannot.
+// A consentContext is what the consent page and its submission both need to know
+// about the account behind the transaction.
+type consentContext struct {
+	// principal is the account the Garmin login resolved.
+	principal string
+	// privacy is what the page says about the notice.
+	privacy privacyState
+	// pending reports that the operator has not approved this account. The page
+	// says so and still offers the notice: accepting it is the person's decision
+	// about their data, and it does not wait on the operator's decision about
+	// their access.
+	pending bool
+}
+
+// consentContext resolves what the consent page and its submission need to know about
+// the account, answering the request itself when it cannot.
 //
 // A store that cannot be read is a 503 rather than a page: neither answer it could
 // stand in for is safe. "Already accepted" would let someone through who never
 // consented, and "not accepted yet" would ask for an acceptance the same broken
 // store cannot record.
-func (s *RemoteServer) privacyFor(
+func (s *RemoteServer) consentContext(
 	w http.ResponseWriter, r *http.Request, session *remoteSession,
-) (privacyState, bool) {
+) (consentContext, bool) {
 	principal, err := s.authorizations.Principal(r.Context(), session.capability)
 	if err != nil {
 		s.refuseSession(w, session, err)
-		return privacyState{}, false
+		return consentContext{}, false
 	}
 	if principal == "" {
 		// The state machine says the login is complete, so a transaction with no
 		// principal is an inconsistency rather than a user error.
 		s.notFound(w)
-		return privacyState{}, false
+		return consentContext{}, false
 	}
 	state, err := s.privacyStateFor(r.Context(), principal)
 	if err != nil {
 		s.unavailable(w)
-		return privacyState{}, false
+		return consentContext{}, false
 	}
-	return state, true
+
+	pending, err := s.accountPending(r.Context(), principal)
+	if err != nil {
+		s.unavailable(w)
+		return consentContext{}, false
+	}
+	return consentContext{principal: principal, privacy: state, pending: pending}, true
+}
+
+// accountPending reports whether the operator still has to decide about this account.
+// A nil Approvals is the ungated shape, where nothing is ever pending.
+func (s *RemoteServer) accountPending(ctx context.Context, principal string) (bool, error) {
+	if s.approvals == nil {
+		return false, nil
+	}
+	approved, err := s.approvals.AccountApproved(ctx, principal)
+	if err != nil {
+		// Neither answer is safe to assume: "approved" would let a held account
+		// through, and "pending" would tell someone their account is waiting when
+		// nobody knows.
+		return false, err
+	}
+	return !approved, nil
 }
 
 // consentData is the consent page's data: the disclosure, the form token, what the
 // page says about the notice, and any message.
 func (s *RemoteServer) consentData(
-	session *remoteSession, disclosure Disclosure, privacy privacyState, message string,
+	session *remoteSession, disclosure Disclosure, context consentContext, message string,
 ) remotePageData {
 	data := newRemotePageData(disclosure, session.formToken(), message)
-	data.Privacy = privacy
+	data.Privacy = context.privacy
+	data.AccountPending = context.pending
 	return data
 }
 
@@ -227,13 +214,13 @@ func (s *RemoteServer) retryConsent(
 		s.refuseSession(w, session, err)
 		return
 	}
-	privacy, ok := s.privacyFor(w, r, session)
+	context, ok := s.consentContext(w, r, session)
 	if !ok {
 		return
 	}
 	setOutboundRedirectCSP(w, disclosure.RedirectURI)
 	s.pages.render(w, http.StatusBadRequest, pageConsent,
-		s.consentData(session, disclosure, privacy, sanitizedMessage(message)))
+		s.consentData(session, disclosure, context, sanitizedMessage(message)))
 }
 
 // handleConsentSubmit ends the transaction.
@@ -296,32 +283,61 @@ func (s *RemoteServer) handleConsentSubmit(w http.ResponseWriter, r *http.Reques
 func (s *RemoteServer) recordPrivacyConsent(
 	w http.ResponseWriter, r *http.Request, session *remoteSession,
 ) bool {
-	state, ok := s.privacyFor(w, r, session)
+	context, ok := s.consentContext(w, r, session)
 	if !ok {
 		return false
 	}
-	if !state.Required {
-		return true
-	}
-	// A checkbox that was not ticked is absent, so this compares against the one
-	// value the form may send rather than testing for presence.
-	if r.PostFormValue(fieldPrivacy) != privacyAccepted {
-		s.retryConsent(w, r, session, msgPrivacyRequired)
-		return false
+
+	if context.privacy.Required {
+		// A checkbox that was not ticked is absent, so this compares against the
+		// one value the form may send rather than testing for presence.
+		if r.PostFormValue(fieldPrivacy) != privacyAccepted {
+			s.retryConsent(w, r, session, msgPrivacyRequired)
+			return false
+		}
+		if err := s.privacy.AcceptPrivacyNotice(
+			r.Context(), context.principal, s.notice.digest, s.notice.version); err != nil {
+			s.unavailable(w)
+			return false
+		}
+		s.log(r.Context(), "the privacy notice was accepted")
 	}
 
-	principal, err := s.authorizations.Principal(r.Context(), session.capability)
-	if err != nil || principal == "" {
-		s.abandon(w, session)
+	// The approval gate is applied here, after the acceptance is stored and before
+	// anything is granted. The order is the point: accepting the notice is the
+	// person's decision about their own data, and it must not wait on the operator's
+	// decision about their access. A held account can therefore accept, its
+	// acceptance is recorded, and it still receives no token.
+	if context.pending {
+		s.holdAccount(w, r, session)
 		return false
 	}
-	if err := s.privacy.AcceptPrivacyNotice(
-		r.Context(), principal, s.notice.digest, s.notice.version); err != nil {
-		s.unavailable(w)
-		return false
-	}
-	s.log(r.Context(), "the privacy notice was accepted")
 	return true
+}
+
+// holdAccount ends the transaction of an account that is still waiting for the
+// operator, and shows the person what happened.
+//
+// Nothing is granted and the transaction is closed rather than left to expire: the
+// person comes back through their client once the operator has decided. Whatever they
+// accepted a moment ago is already stored.
+func (s *RemoteServer) holdAccount(
+	w http.ResponseWriter, r *http.Request, session *remoteSession,
+) {
+	// The denial's redirect target is discarded on purpose — the person stays here,
+	// on a page that explains the wait, instead of being bounced back to a client
+	// that would only say "denied".
+	if _, err := s.authorizations.Deny(r.Context(), session.capability); err != nil {
+		s.log(r.Context(), "closing the transaction of a held account failed")
+	}
+	s.discard(session)
+	s.clearCookie(w)
+	s.log(r.Context(), "an account is waiting for the operator's approval")
+
+	data := emptyRemoteData("")
+	data.Privacy = privacyState{Version: s.notice.version}
+	data.AccountPending = true
+	s.pages.render(w, http.StatusForbidden, pagePending, data)
 }
 
 // decide grants or denies. A denial persists nothing at all.

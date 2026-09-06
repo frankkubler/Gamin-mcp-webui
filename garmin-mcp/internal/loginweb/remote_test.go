@@ -170,6 +170,18 @@ func (h *remoteHarness) decide(page, decision string) *http.Response {
 	return resp
 }
 
+// decidePage is decide that also returns the page, for a test that has to read what
+// the server answered rather than only its status.
+func (h *remoteHarness) decidePage(page, decision string) (*http.Response, string) {
+	h.t.Helper()
+
+	return h.b.post(pathConsent, url.Values{
+		fieldCSRF:     {csrfToken(h.t, page)},
+		fieldDecision: {decision},
+		fieldPrivacy:  {privacyYes},
+	})
+}
+
 // decideWithoutAccepting posts a decision from a form whose acceptance box was left
 // unticked. A browser omits the field entirely, which is what this sends.
 func (h *remoteHarness) decideWithoutAccepting(page, decision string) (*http.Response, string) {

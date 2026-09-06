@@ -1,15 +1,17 @@
 {{define "title"}}Compte en attente de validation{{end}}
 {{define "content"}}
-<p>Votre connexion Garmin a réussi et votre compte existe désormais sur ce serveur,
-mais il <strong>attend la validation de l'exploitant</strong>. Aucun accès n'a été
-accordé au client qui vous a envoyé ici, et aucun jeton n'a été émis.</p>
+<p>Votre connexion Garmin a réussi et votre compte existe sur ce serveur. Ce que vous
+venez d'accepter est enregistré. Mais votre compte <strong>attend la validation de
+l'exploitant</strong> : aucun accès n'a été accordé au client qui vous a envoyé ici, et
+aucun jeton n'a été émis.</p>
 
-<p>Rien d'autre n'est à faire de votre côté : recommencez cette autorisation une fois
-que l'exploitant vous aura confirmé la validation. Si vous ne savez pas à qui vous
-adresser, c'est la personne qui vous a donné l'adresse de ce serveur.</p>
+<p>Rien d'autre n'est à faire de votre côté. Une fois la validation confirmée,
+relancez cette autorisation depuis votre client : la notice ne vous sera pas redemandée.
+Si vous ne savez pas à qui vous adresser, c'est la personne qui vous a donné l'adresse de
+ce serveur.</p>
 
 <section class="privacy" aria-labelledby="privacy-heading">
-<h2 id="privacy-heading">Ce que ce déploiement enregistre à votre sujet</h2>
+<h2 id="privacy-heading">Rappel : ce que ce déploiement enregistre à votre sujet</h2>
 {{template "privacy_summary" .}}
 <details class="privacy-details">
 <summary>Lire la notice en entier</summary>
@@ -18,7 +20,6 @@ adresser, c'est la personne qui vous a donné l'adresse de ce serveur.</p>
 <p class="privacy-version">Notice version {{.Privacy.Version}}.</p>
 </section>
 
-<p class="notice">Cette notice vous est montrée parce que votre compte existe déjà, même
-sans validation. Si celle-ci vous est refusée, vous pouvez demander la suppression de ce
-compte à l'exploitant.</p>
+<p class="notice">Votre compte existe déjà, même sans validation. Si celle-ci vous est
+refusée, vous pouvez demander la suppression de ce compte à l'exploitant.</p>
 {{end}}

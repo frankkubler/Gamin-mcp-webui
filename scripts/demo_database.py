@@ -93,10 +93,11 @@ def build(path: Path, seed: int = 7) -> None:
         if last_activity is None:
             continue
 
-        # La notice de confidentialite : la plupart des comptes l'ont acceptee, et
-        # un compte sur quatre est anterieur a sa mise en place, ce qui est l'etat
-        # qu'un operateur doit pouvoir reperer dans l'interface.
-        if index % 4 != 1:
+        # La notice de confidentialite. Elle est independante de la validation : un
+        # compte en attente peut l'avoir acceptee, c'est meme le cas normal depuis
+        # que la page de consentement lui est ouverte. Un compte sur six est
+        # anterieur a sa mise en place, l'etat qu'un operateur doit savoir reperer.
+        if index % 6 != 2:
             connection.execute(
                 "INSERT INTO privacy_notice_consents VALUES (?, ?, ?, ?)",
                 (

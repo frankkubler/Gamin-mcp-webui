@@ -22,13 +22,18 @@ Migration `0004` approves every account that already existed, recorded as decide
 
 ## Where it is enforced, and why twice
 
-**At the end of the browser login** — `internal/loginweb/remoteflow.go`,
-`approvedAccount`. The check sits right after the Garmin login resolved a principal and
-before anything is offered to grant, so a held account never reaches the consent page:
-no privacy acceptance, no authorization code, no token. The person gets the `pending`
-page, which carries the privacy notice, because their account exists and their data is
-already stored whether or not the decision ever comes. The OAuth transaction is closed
-rather than left to expire.
+**At the end of the browser login** — `internal/loginweb/remoteflow.go`, in
+`recordPrivacyConsent`, immediately after the privacy acceptance is stored and before
+anything is granted.
+
+That order is deliberate. A held account reaches the consent page like any other, with
+a banner saying it is waiting, and it **can accept the privacy notice**: accepting is
+the person's decision about their own data, and making it wait on the operator's
+decision about their access would leave someone able to read the notice but not to
+consent to it. So the acceptance is recorded, and then the gate refuses the grant: the
+person gets the `pending` page, the OAuth transaction is closed rather than left to
+expire, and no code or token is issued. When the operator approves, the person comes
+back through their client and is not asked for the notice again.
 
 **On every access token.** The token select carries the approval state, and
 `checkApproved` in `internal/store/sqlite_tokens.go` refuses a token whose account is

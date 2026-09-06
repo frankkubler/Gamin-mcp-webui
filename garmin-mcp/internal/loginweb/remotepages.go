@@ -38,6 +38,11 @@ type remotePageData struct {
 	// before. It carries no account data.
 	Privacy privacyState
 
+	// AccountPending reports that the operator has not approved this account yet.
+	// The consent page says so before the buttons, because a page that offered an
+	// Allow which grants nothing would be lying by omission.
+	AccountPending bool
+
 	// The field bounds, so the form advertises the limits the server enforces.
 	MaxEmailLen    int
 	MaxPasswordLen int

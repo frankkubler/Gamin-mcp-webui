@@ -156,9 +156,15 @@ d'autorisation, aucun jeton.
 
 | Où | Ce qui se passe |
 | -- | --------------- |
-| Fin du login navigateur | un compte non validé voit la page « en attente », avec la notice de confidentialité, et sa transaction OAuth est close. |
+| Page de consentement | un compte non validé y accède normalement : un bandeau annonce l'attente, et **il peut accepter la notice dès maintenant**. Son acceptation est enregistrée. |
+| Au clic sur *Allow* | l'acceptation est écrite, puis la porte s'applique : compte non validé → page « en attente », transaction OAuth close, aucun jeton. |
 | À chaque requête MCP | la lecture du jeton d'accès refuse un compte non validé. Retirer une validation coupe l'accès **à la requête suivante**, pas au prochain login. |
 | Dans l'interface | colonne *Validation*, filtre, tuile, et les boutons *Valider* / *Bloquer* / *Remettre en attente*. |
+
+L'ordre compte : accepter la notice est la décision de la personne sur ses propres
+données, et elle n'a pas à attendre la décision de l'exploitant sur son accès. Une fois
+validée, la personne relance l'autorisation depuis son client et **la notice ne lui est
+pas redemandée**.
 
 Trois états : **en attente** (personne n'a décidé), **validé**, **bloqué**. « En attente »
 n'est jamais stocké — c'est l'absence de ligne dans `account_approvals`, si bien qu'un

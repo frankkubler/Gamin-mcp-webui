@@ -1,6 +1,12 @@
 {{define "title"}}Confirm the access you grant{{end}}
 {{define "content"}}
 <p>Your Garmin account is signed in. Nothing has been granted yet.</p>
+{{if .AccountPending}}
+<p class="message">Votre compte attend la validation de l'exploitant. Vous pouvez
+accepter la notice ci-dessous dès maintenant — elle sera enregistrée — mais aucun accès
+ne sera accordé tant que la validation n'est pas faite. Il faudra alors relancer cette
+autorisation depuis votre client.</p>
+{{end}}
 <p><strong>{{.Client.ClientName}}</strong> (<code>{{.Client.ClientID}}</code>) will
 receive a token for this deployment only. It never receives your Garmin password or
 your Garmin tokens.</p>

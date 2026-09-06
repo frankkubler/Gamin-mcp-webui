@@ -186,34 +186,73 @@ func newGatedRemote(t *testing.T, approvals *fakeApprovals) *remoteHarness {
 	return newRemoteWith(t, &fakeAuthenticator{loginAttempt: remoteSucceeded()}, approvals)
 }
 
-func TestAHeldAccountNeverReachesTheConsentPage(t *testing.T) {
+func TestAHeldAccountAcceptsTheNoticeAndStillGetsNothing(t *testing.T) {
 	t.Parallel()
 	h := newGatedRemote(t, &fakeApprovals{approved: map[string]bool{}})
 
-	h.authorize()
-	resp, page := h.submitCredentialsPage(h.continueToCredentials())
-
-	// The login succeeded and the account exists; what it may not do is go on.
-	wantStatus(t, resp, http.StatusForbidden, "POST /login/credentials for a held account")
-	if !strings.Contains(page, "attend la validation de l'exploitant") {
-		t.Error("the page does not say the account is waiting")
+	// The consent page is reached: accepting the notice is the person's decision
+	// about their own data, and it does not wait on the operator's decision about
+	// their access.
+	page := h.reachConsent()
+	if !strings.Contains(page, `name="privacy_accepted"`) {
+		t.Fatal("a held account was not offered the acceptance box")
 	}
-	// The notice is on it: the account exists, so its data is already stored.
-	if !strings.Contains(page, "Ce que ce déploiement enregistre à votre sujet") {
-		t.Error("the pending page does not carry the privacy notice")
+	// And the page says what will happen, rather than offering an Allow that
+	// silently grants nothing.
+	if !strings.Contains(page, "attend la validation de l'exploitant") {
+		t.Error("the consent page does not say the account is waiting")
+	}
+
+	resp, body := h.decidePage(page, decisionAllow)
+
+	wantStatus(t, resp, http.StatusForbidden, "POST /login/consent for a held account")
+	if !strings.Contains(body, "venez d'accepter est enregistré") {
+		t.Error("the pending page does not confirm that the acceptance was stored")
+	}
+	// The acceptance is stored; the access is not granted.
+	if h.privacy.count() != 1 {
+		t.Errorf("recorded %d acceptances, want the held account's one", h.privacy.count())
 	}
 	if _, grants, denials := h.authz.counts(); grants != 0 || denials != 1 {
-		t.Errorf("grants = %d denials = %d, want the transaction closed and nothing granted",
+		t.Errorf("grants = %d denials = %d, want nothing granted and the transaction closed",
 			grants, denials)
-	}
-	if h.privacy.count() != 0 {
-		t.Error("a held account recorded a privacy acceptance")
 	}
 
 	// The session is gone with it: the consent page is not reachable by hand.
 	consent, _ := h.b.get(pathConsent)
 	if consent.StatusCode == http.StatusOK {
 		t.Error("the consent page is reachable after the account was held")
+	}
+}
+
+func TestOnceApprovedTheNoticeIsNotAskedAgain(t *testing.T) {
+	t.Parallel()
+	approvals := &fakeApprovals{approved: map[string]bool{}}
+	h := newGatedRemote(t, approvals)
+
+	// First visit, while the account waits: the person accepts and gets nothing.
+	h.decide(h.reachConsent(), decisionAllow)
+	if h.privacy.count() != 1 {
+		t.Fatalf("recorded %d acceptances, want one", h.privacy.count())
+	}
+
+	// The operator approves, the person comes back through their client.
+	approvals.approved[testPrincipal] = true
+	second := h.reachConsent()
+	if strings.Contains(second, `name="privacy_accepted"`) {
+		t.Error("the notice was asked again after approval")
+	}
+	if strings.Contains(second, "attend la validation") {
+		t.Error("the consent page still says the account is waiting")
+	}
+
+	resp := h.decide(second, decisionAllow)
+	wantStatus(t, resp, http.StatusSeeOther, "POST /login/consent after approval")
+	if _, grants, _ := h.authz.counts(); grants != 1 {
+		t.Errorf("grants = %d, want the approved account through", grants)
+	}
+	if h.privacy.count() != 1 {
+		t.Errorf("recorded %d acceptances, want the first one only", h.privacy.count())
 	}
 }
 
@@ -234,14 +273,19 @@ func TestAnApprovedAccountPassesTheGate(t *testing.T) {
 	}
 }
 
-func TestAnUnreadableApprovalStoreStopsTheLogin(t *testing.T) {
+func TestAnUnreadableApprovalStoreStopsTheGrant(t *testing.T) {
 	t.Parallel()
-	h := newGatedRemote(t, &fakeApprovals{err: errors.New("the approval store is unreachable")})
+	approvals := &fakeApprovals{approved: map[string]bool{testPrincipal: true}}
+	h := newGatedRemote(t, approvals)
 
-	h.authorize()
-	resp := h.submitRemoteCredentials(h.continueToCredentials())
+	page := h.reachConsent()
 
-	wantStatus(t, resp, http.StatusServiceUnavailable, "POST /login/credentials")
+	// The store breaks between rendering the page and submitting it.
+	approvals.err = errors.New("the approval store is unreachable")
+	resp := h.decide(page, decisionAllow)
+
+	// Neither answer is safe to assume, so the request is answered with neither.
+	wantStatus(t, resp, http.StatusServiceUnavailable, "POST /login/consent")
 	if _, grants, _ := h.authz.counts(); grants != 0 {
 		t.Error("a grant went through while the approval store was unreadable")
 	}
