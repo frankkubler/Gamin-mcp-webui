@@ -59,6 +59,7 @@ def database_path(tmp_path: Path) -> Path:
     )
     _consent(connection, "p-active", "desktop", ago(days=60))
     _privacy(connection, "p-active", "hash-v2", "2026-09-06", ago(days=60))
+    _approval(connection, "p-active", "approved", ago(days=60), "admin", "collègue")
     _family(connection, "f-active", "p-active", "desktop", ago(days=60))
     _token(connection, "t-active-1", "f-active", "access", ago(days=30))
     _token(connection, "t-active-2", "f-active", "refresh", ago(hours=6))
@@ -72,17 +73,20 @@ def database_path(tmp_path: Path) -> Path:
     _principal(connection, "p-idle", "bob@exemple.fr", ago(days=200), ago(days=200), linked=True)
     _consent(connection, "p-idle", "cli", ago(days=200))
     # Ce compte a vu deux versions successives de la notice.
+    _approval(connection, "p-idle", "approved", ago(days=200), "migration", "")
     _privacy(connection, "p-idle", "hash-v1", "2026-01-01", ago(days=200))
     _privacy(connection, "p-idle", "hash-v2", "2026-09-06", ago(days=30))
     _family(connection, "f-idle", "p-idle", "cli", ago(days=200))
     _token(connection, "t-idle", "f-idle", "access", ago(days=12))
 
+    # p-dormant reste en attente et p-new est bloqué : les trois états sont couverts.
     # 3. Compte dormant : plus rien depuis le consentement, il y a 300 jours.
     _principal(connection, "p-dormant", "carol@exemple.fr", ago(days=300), ago(days=300), True)
     _consent(connection, "p-dormant", "cli", ago(days=300))
 
     # 4. Compte jamais connecté : créé, jamais lié, aucun signal postérieur.
     _principal(connection, "p-new", "dan@exemple.fr", ago(days=1), ago(days=1), linked=False)
+    _approval(connection, "p-new", "blocked", ago(hours=2), "admin", "inconnu au bataillon")
 
     connection.commit()
     connection.close()
@@ -109,6 +113,20 @@ def _principal(
             created,
             updated,
         ),
+    )
+
+
+def _approval(
+    connection: sqlite3.Connection,
+    principal_id: str,
+    state: str,
+    decided: str,
+    decided_by: str,
+    note: str,
+) -> None:
+    connection.execute(
+        "INSERT INTO account_approvals VALUES (?, ?, ?, ?, ?)",
+        (principal_id, state, decided, decided_by, note),
     )
 
 

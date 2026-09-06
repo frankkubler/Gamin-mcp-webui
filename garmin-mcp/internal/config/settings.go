@@ -27,6 +27,7 @@ const (
 	keySessionTimeout         = "session-timeout"
 	keyOAuthClients           = "oauth-clients"
 	keyAllowInsecureHTTP      = "allow-insecure-http"
+	keyRequireApproval        = "require-account-approval"
 	keyTLSCertFile            = "tls-cert-file"
 	keyTLSKeyFile             = "tls-key-file"
 	keyDatabasePath           = "database-path"
@@ -143,6 +144,10 @@ var settingTable = [...]setting{
 	{
 		key: keyAllowInsecureHTTP, flag: keyAllowInsecureHTTP, kind: kindBool, def: false,
 		usage: "development override permitting a cleartext non-loopback origin",
+	},
+	{
+		key: keyRequireApproval, flag: keyRequireApproval, kind: kindBool, def: true,
+		usage: "hold a new account until an operator approves it",
 	},
 	{
 		key: keyTLSCertFile, flag: keyTLSCertFile, kind: kindString, def: "",

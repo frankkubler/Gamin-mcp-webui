@@ -95,10 +95,11 @@ func newRemoteDeployment(
 	}
 
 	remote, err := assembleRemote(cfg, w, paths, remoteParts{
-		endpoints:   endpoints,
-		clients:     clients,
-		sqlite:      sqlite,
-		revocations: revocations,
+		endpoints:       endpoints,
+		clients:         clients,
+		sqlite:          sqlite,
+		revocations:     revocations,
+		requireApproval: cfg.RequireAccountApproval,
 	})
 	if err != nil {
 		return nil, errors.Join(err, sqlite.Close())
@@ -124,10 +125,11 @@ func openSQLiteStore(
 	}
 
 	sqlite, err := store.OpenSQLite(ctx, store.SQLiteConfig{
-		Path:        cfg.DatabasePath,
-		Key:         active,
-		RetiredKeys: retired,
-		Revocations: revocations,
+		Path:            cfg.DatabasePath,
+		Key:             active,
+		RetiredKeys:     retired,
+		Revocations:     revocations,
+		RequireApproval: cfg.RequireAccountApproval,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("opening the multi-user store: %w", err)
@@ -141,6 +143,10 @@ type remoteParts struct {
 	clients     *configClients
 	sqlite      *store.SQLiteStore
 	revocations *revocationBus
+	// requireApproval carries the operator's choice down to the login server, so
+	// the gate is a wiring decision made once rather than a setting re-read on
+	// every login.
+	requireApproval bool
 }
 
 // assembleRemote builds everything that depends on the open store. It is separate
@@ -319,10 +325,19 @@ func newRemoteLoginServer(
 		return nil, err
 	}
 
+	// The gate is wired in only when the operator asked for it. A nil Approvals is
+	// the upstream behaviour, so the setting decides whether the seam exists at all
+	// rather than being re-read on every login.
+	var approvals loginweb.Approvals
+	if parts.requireApproval {
+		approvals = parts.sqlite
+	}
+
 	login, err := loginweb.NewRemote(loginweb.RemoteConfig{
 		Authorizations:  grants,
 		Authenticator:   logins,
 		PrivacyConsents: consents,
+		Approvals:       approvals,
 		Logger:          deps.events,
 	})
 	if err != nil {

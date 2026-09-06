@@ -107,6 +107,20 @@ def build(path: Path, seed: int = 7) -> None:
                 ),
             )
 
+        # La validation par l'operateur : la plupart des comptes sont valides, un
+        # sur quatre attend encore, et un est bloque — les trois etats que
+        # l'interface doit savoir montrer.
+        if index % 4 != 1:
+            connection.execute(
+                "INSERT INTO account_approvals VALUES (?, ?, ?, 'admin', ?)",
+                (
+                    principal_id,
+                    "blocked" if index % 7 == 3 else "approved",
+                    iso(created + timedelta(minutes=6)),
+                    "compte bloque" if index % 7 == 3 else "",
+                ),
+            )
+
         client_id = clients[index % len(clients)][0]
         connection.execute(
             "INSERT INTO consents VALUES"

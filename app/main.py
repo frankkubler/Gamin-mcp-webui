@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from . import queries
 from .auth import authorize
 from .config import Settings, load_settings
-from .db import Database, DatabaseUnavailable
+from .db import Database, DatabaseReadOnly, DatabaseUnavailable
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -60,6 +60,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.database = Database(
         resolved.database_path, snapshot_ttl_seconds=resolved.snapshot_ttl_seconds
     )
+
+    @app.exception_handler(DatabaseReadOnly)
+    def _read_only(_: Request, exc: DatabaseReadOnly) -> JSONResponse:
+        return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={"detail": str(exc)})
+
+    @app.exception_handler(queries.ApprovalRefused)
+    def _refused(_: Request, exc: queries.ApprovalRefused) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content={"detail": str(exc)}
+        )
 
     @app.exception_handler(DatabaseUnavailable)
     def _unavailable(_: Request, exc: DatabaseUnavailable) -> JSONResponse:
@@ -158,6 +168,9 @@ def _register_routes(app: FastAPI) -> None:
         consent: Literal["", "oui", "non"] = Query(
             "", description="Notice de confidentialité acceptée."
         ),
+        approval: Literal["", "pending", "approved", "blocked"] = Query(
+            "", description="État de validation du compte."
+        ),
         sort: str = Query("last_seen_at", description="Champ de tri."),
         order: Literal["asc", "desc"] = Query("desc"),
         limit: int = Query(100, ge=1, le=1000),
@@ -171,7 +184,7 @@ def _register_routes(app: FastAPI) -> None:
                 detail=f"Tri inconnu : {sort}. Valeurs acceptées : {sorted(SORTABLE_FIELDS)}.",
             )
 
-        items = _filter(_accounts(request), search, status_filter, linked, consent)
+        items = _filter(_accounts(request), search, status_filter, linked, consent, approval)
         items = _sort(items, sort, order)
         return {
             "total": len(items),
@@ -189,10 +202,11 @@ def _register_routes(app: FastAPI) -> None:
         ),
         linked: Literal["", "oui", "non"] = Query(""),
         consent: Literal["", "oui", "non"] = Query(""),
+        approval: Literal["", "pending", "approved", "blocked"] = Query(""),
     ) -> StreamingResponse:
         """Export CSV de la même liste, pour un rapport ou un tableur."""
 
-        items = _filter(_accounts(request), search, status_filter, linked, consent)
+        items = _filter(_accounts(request), search, status_filter, linked, consent, approval)
         columns = [
             "id",
             "email",
@@ -206,6 +220,9 @@ def _register_routes(app: FastAPI) -> None:
             "privacy_consent",
             "privacy_accepted_at",
             "privacy_notice_version",
+            "approval_state",
+            "approval_decided_at",
+            "approval_decided_by",
         ]
         buffer = io.StringIO()
         writer = csv.DictWriter(buffer, fieldnames=columns, extrasaction="ignore")
@@ -221,6 +238,49 @@ def _register_routes(app: FastAPI) -> None:
                 "Content-Disposition": f'attachment; filename="garmin-mcp-comptes-{stamp}.csv"'
             },
         )
+
+    @app.post(
+        "/api/accounts/{principal_id}/approval",
+        tags=["comptes"],
+        # Le contrôle d'origine est une dépendance, donc il s'exécute avant que le
+        # corps ne soit validé : une écriture venue d'ailleurs est refusée pour ce
+        # qu'elle est, et non par accident parce que son corps n'était pas du JSON.
+        dependencies=[*protected, Depends(_refuse_cross_site)],
+        status_code=status.HTTP_200_OK,
+    )
+    def decide(
+        request: Request,
+        principal_id: str,
+        decision: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Valide, bloque, ou remet en attente un compte.
+
+        Corps attendu : ``{"state": "approved" | "blocked" | "pending", "note": "…"}``.
+        ``pending`` retire la décision, ce qui remet le compte en attente.
+
+        C'est la seule écriture de toute l'interface, et elle ne touche qu'à la table
+        des validations : la connexion installe un autorisateur SQLite qui refuse
+        toute autre écriture avant même de l'exécuter.
+        """
+
+        settings: Settings = request.app.state.settings
+        database: Database = request.app.state.database
+
+        state = str(decision.get("state", "")).strip()
+        note = str(decision.get("note", "") or "")
+
+        with database.connect_write() as connection:
+            try:
+                recorded = queries.set_approval(
+                    connection,
+                    principal_id,
+                    state,
+                    decided_by=settings.username,
+                    note=note,
+                )
+            except LookupError as absent:
+                raise HTTPException(status_code=404, detail="Compte inconnu.") from absent
+        return recorded
 
     @app.get("/api/accounts/{principal_id}", tags=["comptes"], dependencies=protected)
     def account(request: Request, principal_id: str) -> dict[str, Any]:
@@ -241,6 +301,36 @@ def _register_routes(app: FastAPI) -> None:
         return detail
 
 
+def _refuse_cross_site(request: Request) -> None:
+    """Refuse une écriture venue d'un autre site.
+
+    L'interface s'authentifie en HTTP Basic, que le navigateur rejoue tout seul :
+    sans ce contrôle, une page tierce pourrait faire valider un compte à l'insu de
+    l'opérateur. Deux barrières, toutes deux nécessaires côté serveur :
+
+    * l'en-tête ``Origin``, quand il est présent, doit désigner cet hôte ;
+    * le corps doit être du JSON, ce qu'un formulaire HTML ne peut pas envoyer
+      sans passer par un contrôle préalable CORS que rien n'autorise ici.
+    """
+
+    content_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
+    if content_type != "application/json":
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Cette route n'accepte que du JSON (Content-Type: application/json).",
+        )
+
+    origin = request.headers.get("origin")
+    if origin:
+        host = request.headers.get("host", "")
+        attendu = {f"http://{host}", f"https://{host}"}
+        if origin not in attendu:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Origine refusée : cette écriture ne peut venir que de l'interface.",
+            )
+
+
 def _csv_value(value: Any) -> str:
     """Rend une valeur lisible dans un tableur : booléens en oui/non, vides en blanc."""
 
@@ -257,6 +347,7 @@ def _filter(
     status_filter: str,
     linked: str,
     consent: str = "",
+    approval: str = "",
 ) -> list[dict[str, Any]]:
     needle = search.strip().lower()
     result = accounts
@@ -275,6 +366,8 @@ def _filter(
     if consent:
         accepted = consent == "oui"
         result = [account for account in result if bool(account["privacy_consent"]) is accepted]
+    if approval:
+        result = [account for account in result if account["approval_state"] == approval]
     return result
 
 

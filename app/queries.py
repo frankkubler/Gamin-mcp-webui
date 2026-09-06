@@ -112,7 +112,19 @@ SELECT
       LIMIT 1)                                  AS privacy_notice_version,
     (SELECT COUNT(*)
        FROM privacy_notice_consents n
-      WHERE n.principal_id = p.id)              AS privacy_acceptances
+      WHERE n.principal_id = p.id)              AS privacy_acceptances,
+    (SELECT a.state
+       FROM account_approvals a
+      WHERE a.principal_id = p.id)              AS approval_state,
+    (SELECT a.decided_at
+       FROM account_approvals a
+      WHERE a.principal_id = p.id)              AS approval_decided_at,
+    (SELECT a.decided_by
+       FROM account_approvals a
+      WHERE a.principal_id = p.id)              AS approval_decided_by,
+    (SELECT a.note
+       FROM account_approvals a
+      WHERE a.principal_id = p.id)              AS approval_note
 FROM principals p
 ORDER BY p.created_at DESC, p.id
 """
@@ -177,6 +189,91 @@ WHERE e.principal_id = ?
 ORDER BY e.occurred_at DESC
 LIMIT ?
 """
+
+
+# Les trois etats d'une validation. « en attente » n'est jamais stocke : c'est
+# l'absence de ligne, ce qui fait qu'un compte tout juste cree attend par
+# construction, sans que rien n'ait eu a s'executer.
+APPROVAL_PENDING = "pending"
+APPROVAL_APPROVED = "approved"
+APPROVAL_BLOCKED = "blocked"
+
+APPROVAL_STATES = (APPROVAL_PENDING, APPROVAL_APPROVED, APPROVAL_BLOCKED)
+
+# Bornes des deux colonnes que l'operateur ecrit, identiques a celles que le serveur
+# applique de son cote : une valeur que lui refuserait ne doit pas entrer ici non plus.
+MAX_DECIDED_BY = 128
+MAX_NOTE = 500
+
+
+class ApprovalRefused(ValueError):
+    """La decision demandee ne peut pas etre enregistree telle quelle."""
+
+
+def _check_operator_text(kind: str, value: str, limit: int) -> str:
+    if len(value.encode("utf-8")) > limit:
+        raise ApprovalRefused(f"{kind} dépasse {limit} octets.")
+    if any(character < " " or character == "\x7f" for character in value):
+        raise ApprovalRefused(f"{kind} contient un caractère de contrôle.")
+    return value
+
+
+def set_approval(
+    connection: sqlite3.Connection,
+    principal_id: str,
+    state: str,
+    *,
+    decided_by: str = "",
+    note: str = "",
+    now: datetime | None = None,
+) -> dict[str, object]:
+    """Enregistre la decision d'un operateur sur un compte.
+
+    ``pending`` supprime la ligne plutot que d'en stocker une : l'etat « en attente »
+    est l'absence de decision, et c'est ce que le serveur lit. Stocker un troisieme
+    etat obligerait le serveur a l'apprendre pour arriver a la meme conclusion.
+
+    Le compte doit exister : une decision au sujet de personne n'a pas de sens, et la
+    cle etrangere la refuse.
+    """
+
+    if state not in APPROVAL_STATES:
+        raise ApprovalRefused(f"État inconnu : {state!r}. Attendu : {', '.join(APPROVAL_STATES)}.")
+    _check_operator_text("L'auteur de la décision", decided_by, MAX_DECIDED_BY)
+    _check_operator_text("La note", note, MAX_NOTE)
+
+    exists = connection.execute("SELECT 1 FROM principals WHERE id = ?", (principal_id,)).fetchone()
+    if exists is None:
+        raise LookupError(principal_id)
+
+    if state == APPROVAL_PENDING:
+        connection.execute("DELETE FROM account_approvals WHERE principal_id = ?", (principal_id,))
+        return {
+            "principal_id": principal_id,
+            "approval_state": APPROVAL_PENDING,
+            "approval_decided_at": None,
+            "approval_decided_by": None,
+            "approval_note": None,
+        }
+
+    decided = _iso(now or datetime.now(UTC))
+    connection.execute(
+        """
+        INSERT INTO account_approvals (principal_id, state, decided_at, decided_by, note)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT (principal_id) DO UPDATE SET
+            state = excluded.state, decided_at = excluded.decided_at,
+            decided_by = excluded.decided_by, note = excluded.note
+        """,
+        (principal_id, state, decided, decided_by, note),
+    )
+    return {
+        "principal_id": principal_id,
+        "approval_state": state,
+        "approval_decided_at": decided,
+        "approval_decided_by": decided_by,
+        "approval_note": note,
+    }
 
 
 def parse_timestamp(value: str | None) -> datetime | None:
@@ -299,6 +396,12 @@ def list_accounts(
             "privacy_notice_version": row.get("privacy_notice_version"),
             "privacy_acceptances": int(row["privacy_acceptances"]),
             "privacy_consent": bool(row["privacy_acceptances"]),
+            # L'absence de ligne est l'etat « en attente » : c'est ainsi que le
+            # serveur le lit, et l'interface doit dire la meme chose que lui.
+            "approval_state": row.get("approval_state") or APPROVAL_PENDING,
+            "approval_decided_at": _iso(parse_timestamp(row.get("approval_decided_at"))),  # type: ignore[arg-type]
+            "approval_decided_by": row.get("approval_decided_by"),
+            "approval_note": row.get("approval_note"),
             "token_families_active": int(row["token_families_active"]),
             "token_families_total": int(row["token_families_total"]),
             "signals": {
@@ -375,6 +478,7 @@ def summarize(
     counters = {"actif": 0, "inactif": 0, "dormant": 0, "jamais_connecte": 0}
     linked = 0
     consented = 0
+    approvals = {APPROVAL_PENDING: 0, APPROVAL_APPROVED: 0, APPROVAL_BLOCKED: 0}
     created_7d = 0
     created_30d = 0
     seen_24h = 0
@@ -387,6 +491,7 @@ def summarize(
             linked += 1
         if account.get("privacy_consent"):
             consented += 1
+        approvals[str(account.get("approval_state", APPROVAL_PENDING))] += 1
 
         created_age = account.get("created_days_ago")
         if isinstance(created_age, (int, float)):
@@ -411,6 +516,8 @@ def summarize(
         "accounts_total": len(accounts),
         "garmin_linked": linked,
         "privacy_consent": consented,
+        "by_approval": approvals,
+        "approval_pending": approvals[APPROVAL_PENDING],
         "privacy_consent_missing": len(accounts) - consented,
         "created_last_7_days": created_7d,
         "created_last_30_days": created_30d,

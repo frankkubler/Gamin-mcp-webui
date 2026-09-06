@@ -76,6 +76,15 @@ type remoteHarness struct {
 
 func newRemote(t *testing.T, garmin *fakeAuthenticator) *remoteHarness {
 	t.Helper()
+	return newRemoteWith(t, garmin, nil)
+}
+
+// newRemoteWith is newRemote with the approval gate wired in. A nil approvals is the
+// ungated shape, which is what every test that is not about the gate uses.
+func newRemoteWith(
+	t *testing.T, garmin *fakeAuthenticator, approvals loginweb.Approvals,
+) *remoteHarness {
+	t.Helper()
 
 	clock := testkit.NewFakeClock(time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC))
 	authz := newFakeAuthorizations(clock.Now)
@@ -84,6 +93,7 @@ func newRemote(t *testing.T, garmin *fakeAuthenticator) *remoteHarness {
 		Authorizations:  authz,
 		Authenticator:   garmin,
 		PrivacyConsents: privacy,
+		Approvals:       approvals,
 		Now:             clock.Now,
 	})
 	if err != nil {
@@ -123,6 +133,18 @@ func (h *remoteHarness) submitRemoteCredentials(form string) *http.Response {
 		fieldPassword: {testPassword},
 	})
 	return resp
+}
+
+// submitCredentialsPage is submitRemoteCredentials that also returns the page, for a
+// test that has to read what the server answered rather than only its status.
+func (h *remoteHarness) submitCredentialsPage(form string) (*http.Response, string) {
+	h.t.Helper()
+
+	return h.b.post(pathCredentials, url.Values{
+		fieldCSRF:     {csrfToken(h.t, form)},
+		fieldEmail:    {testEmail},
+		fieldPassword: {testPassword},
+	})
 }
 
 // reachConsent runs the whole flow up to the consent page and returns it.

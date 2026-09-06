@@ -18,6 +18,12 @@ const state = {
 const RELATIVE = new Intl.RelativeTimeFormat("fr", { numeric: "auto" });
 const ABSOLUTE = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" });
 
+const APPROVAL_LABELS = {
+  pending: "En attente",
+  approved: "Validé",
+  blocked: "Bloqué",
+};
+
 const STATUS_LABELS = {
   actif: "Actif",
   inactif: "Inactif",
@@ -59,6 +65,53 @@ function badge(status) {
   span.className = `badge badge--${status}`;
   span.textContent = STATUS_LABELS[status] || status;
   return span;
+}
+
+function approvalBadge(state) {
+  const span = document.createElement("span");
+  span.className = `badge badge--${state}`;
+  span.textContent = APPROVAL_LABELS[state] || state;
+  return span;
+}
+
+// Un bouton d'action dans une ligne cliquable : le clic ne doit pas aussi ouvrir le
+// détail, d'où l'arrêt de la propagation.
+function actionButton(label, action) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "button button--small";
+  button.textContent = label;
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    action();
+  });
+  return button;
+}
+
+async function decide(id, state, note = "") {
+  try {
+    const response = await fetch(`/api/accounts/${encodeURIComponent(id)}/approval`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ state, note }),
+    });
+    if (!response.ok) {
+      let detail = `HTTP ${response.status}`;
+      try {
+        const body = await response.json();
+        if (body && body.detail) detail = body.detail;
+      } catch (error) {
+        /* réponse non JSON : on garde le code HTTP */
+      }
+      throw new Error(detail);
+    }
+    showBanner("");
+    const dialog = el("detail");
+    if (dialog.open) dialog.close();
+    await load();
+  } catch (error) {
+    showBanner(error.message);
+  }
 }
 
 function cell(row, text, className) {
@@ -103,6 +156,7 @@ function renderTiles(stats) {
     ["Liés à Garmin", stats.garmin_linked],
     [`Actifs (≤ ${stats.thresholds.active_days} j)`, stats.by_status.actif],
     ["Vus sous 24 h", stats.seen_last_24_hours],
+    ["En attente de validation", stats.approval_pending],
     ["Notice acceptée", stats.privacy_consent],
     ["Sans consentement", stats.privacy_consent_missing],
     ["Jamais connectés", stats.by_status.jamais_connecte],
@@ -132,7 +186,7 @@ function renderRows(accounts) {
     const row = document.createElement("tr");
     row.className = "empty";
     const td = document.createElement("td");
-    td.colSpan = 7;
+    td.colSpan = 8;
     td.textContent = "Aucun compte ne correspond aux filtres.";
     row.appendChild(td);
     body.appendChild(row);
@@ -154,6 +208,19 @@ function renderRows(accounts) {
     wrapper.append(email, sub);
     identity.appendChild(wrapper);
     row.appendChild(identity);
+
+    const approval = document.createElement("td");
+    approval.appendChild(approvalBadge(account.approval_state));
+    if (account.approval_state === "pending") {
+      const actions = document.createElement("div");
+      actions.className = "row-actions";
+      actions.append(
+        actionButton("Valider", () => decide(account.id, "approved")),
+        actionButton("Bloquer", () => decide(account.id, "blocked")),
+      );
+      approval.appendChild(actions);
+    }
+    row.appendChild(approval);
 
     const statusCell = document.createElement("td");
     statusCell.appendChild(badge(account.status));
@@ -283,6 +350,30 @@ async function openDetail(id) {
     ),
   );
 
+  const decision = document.createElement("h3");
+  decision.textContent = "Validation du compte";
+  const decisionState = document.createElement("p");
+  decisionState.append(approvalBadge(account.approval_state));
+  const decisionDetail = document.createElement("span");
+  decisionDetail.textContent = account.approval_decided_at
+    ? ` décidé le ${absolute(account.approval_decided_at)} par ${account.approval_decided_by || "?"}${
+        account.approval_note ? ` — ${account.approval_note}` : ""
+      }`
+    : " aucune décision enregistrée : le compte ne peut rien faire tant qu'il attend.";
+  decisionState.appendChild(decisionDetail);
+
+  const decisionActions = document.createElement("p");
+  decisionActions.className = "row-actions";
+  for (const [label, state] of [
+    ["Valider", "approved"],
+    ["Bloquer", "blocked"],
+    ["Remettre en attente", "pending"],
+  ]) {
+    if (state === account.approval_state) continue;
+    decisionActions.appendChild(actionButton(label, () => decide(account.id, state)));
+  }
+  body.append(decision, decisionState, decisionActions);
+
   const privacy = document.createElement("h3");
   privacy.textContent = "Notice de confidentialité";
   body.append(
@@ -357,6 +448,7 @@ function queryString() {
   if (el("status").value) params.set("status", el("status").value);
   if (el("linked").value) params.set("linked", el("linked").value);
   if (el("consent").value) params.set("consent", el("consent").value);
+  if (el("approval").value) params.set("approval", el("approval").value);
   params.set("sort", state.sort);
   params.set("order", state.order);
   params.set("limit", "1000");
@@ -411,6 +503,7 @@ function bind() {
   el("status").addEventListener("change", load);
   el("linked").addEventListener("change", load);
   el("consent").addEventListener("change", load);
+  el("approval").addEventListener("change", load);
 
   for (const button of document.querySelectorAll("thead button[data-sort]")) {
     button.addEventListener("click", () => {

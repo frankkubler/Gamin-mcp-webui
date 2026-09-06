@@ -19,9 +19,9 @@ téléchargement au moment du build.
 ┌───────────────────────────────────────────────┐
 │  garmin-mcp serve  ──écrit──►  /data/garmin.db│  :8180  endpoint MCP + login OAuth
 │  (Go, OAuth 2.1)               (SQLite, WAL)  │
-│                                      ▲        │
-│  interface web  ──────lit (RO)───────┘        │  :8080  interface + API JSON
-│  (FastAPI)                                    │
+│                                    ▲   ▲      │
+│  interface web  ────lit (RO)───────┘   │      │  :8080  interface + API JSON
+│  (FastAPI)      ────valide────────────►┘      │           (écrit account_approvals)
 └───────────────────────────────────────────────┘
                     /data : base + clé maîtresse + TLS (volume)
 ```
@@ -41,6 +41,7 @@ s'arrête, pour que la politique de redémarrage de Docker s'applique à l'ensem
 | Signal retenu        | le fait horodaté qui porte la date affichée. |
 | Clients / familles   | `consents` non révoqués et `token_families` actives. |
 | Notice acceptée      | dernière ligne de `privacy_notice_consents` (voir plus bas). |
+| Validation           | `account_approvals` : en attente, validé ou bloqué (voir plus bas). |
 
 Le détail d'un compte ajoute la liste complète des signaux, ses acceptations de la notice de
 confidentialité, les clients OAuth autorisés avec leurs portées, les familles de jetons et, si la
@@ -144,15 +145,54 @@ compte antérieur à la mise en place. Deux tuiles comptent les deux populations
 isole les comptes sans consentement, le détail liste toutes les acceptations avec leur
 empreinte, et l'export CSV porte les mêmes colonnes.
 
+## La validation des comptes
+
+Par défaut, **un nouveau compte n'est utilisable qu'une fois validé dans l'interface**.
+Quelqu'un qui se connecte avec ses identifiants Garmin obtient un compte, voit une page
+qui le lui dit, et n'obtient rien d'autre : aucun consentement enregistré, aucun code
+d'autorisation, aucun jeton.
+
+| Où | Ce qui se passe |
+| -- | --------------- |
+| Fin du login navigateur | un compte non validé voit la page « en attente », avec la notice de confidentialité, et sa transaction OAuth est close. |
+| À chaque requête MCP | `LookupAccessToken` refuse le jeton d'un compte non validé. Retirer une validation coupe l'accès **à la requête suivante**, pas au prochain login. |
+| Dans l'interface | colonne *Validation*, filtre, tuile, et les boutons *Valider* / *Bloquer* / *Remettre en attente*. |
+
+Trois états : **en attente** (personne n'a décidé), **validé**, **bloqué**. « En attente »
+n'est jamais stocké — c'est l'absence de ligne dans `account_approvals`, si bien qu'un
+compte tout juste créé attend par construction, sans que rien n'ait eu à s'exécuter. La
+migration `0004` valide en revanche tous les comptes qui existaient déjà : activer la
+porte sur un déploiement en cours ne met personne dehors.
+
+Le réglage `GARMIN_MCP_REQUIRE_ACCOUNT_APPROVAL` (défaut `true`) commande la porte. À
+`false`, on retrouve le comportement amont : un compte est utilisable dès que son login
+Garmin a réussi.
+
+### L'interface écrit, mais une seule table
+
+C'est la seule exception à la lecture seule, et elle n'est pas une convention de code :
+la connexion d'écriture installe un **autorisateur SQLite** qui refuse, avant exécution,
+toute écriture ailleurs que dans `account_approvals` et toute modification de schéma. Un
+test le vérifie en essayant huit requêtes interdites.
+
+La route d'écriture est `POST /api/accounts/{id}/approval`, protégée en plus contre une
+écriture déclenchée depuis un autre site : elle n'accepte que du JSON et refuse un
+en-tête `Origin` qui ne désigne pas l'interface — nécessaire parce que le navigateur
+rejoue tout seul l'authentification HTTP Basic.
+
+Si l'interface tourne séparément avec le volume monté en lecture seule, la validation est
+impossible : la route répond `409` en le disant, et la consultation continue de marcher.
+
 ## Sécurité
 
 Ce qui suit concerne l'interface web. Le modèle de menace du serveur MCP lui-même — isolation des
 comptes, chiffrement des jetons, gestion des clés — est celui du projet amont, décrit dans
 `garmin-mcp/docs/threat-model.md`.
 
-- **Lecture seule, sans exception.** Chaque connexion SQLite est ouverte en `mode=ro` avec
-  `PRAGMA query_only`, et un test vérifie qu'un `DELETE` échoue. L'interface ne peut pas corrompre
-  la base que le serveur MCP écrit à côté d'elle.
+- **Lecture seule, sauf une table.** Les connexions de consultation sont ouvertes en
+  `mode=ro` avec `PRAGMA query_only`, et un test vérifie qu'un `DELETE` échoue. La seule
+  écriture de toute l'interface est la validation des comptes, bornée à `account_approvals`
+  par un autorisateur SQLite — voir « La validation des comptes ».
 - **Conteneur non privilégié.** L'entrypoint n'est root que le temps d'ajuster l'appartenance de
   `/data`, puis redescend sur un compte de service via `setpriv`. La racine du système de fichiers
   peut rester en lecture seule (`read_only: true` dans le compose), `/data` est en `0700`, et les
@@ -223,7 +263,8 @@ sauvegarde en ligne de SQLite. Voir `garmin-mcp/docs/operations.md`.
 
 `RUN_SERVICES` vaut `les-deux` (défaut), `mcp` ou `webui`. Deux conteneurs issus de la même image,
 l'un en `mcp` et l'autre en `webui` sur le même volume, sont une configuration valide — le second
-bascule alors sur une copie temporaire de la base si le volume lui est monté en lecture seule.
+bascule alors sur une copie temporaire de la base si le volume lui est monté en lecture seule, et
+la validation des comptes n'est alors pas possible depuis ce conteneur.
 
 ### En local, sans conteneur
 
@@ -264,6 +305,7 @@ remplacés par des soulignés, préfixée `GARMIN_MCP_`. La liste complète est 
 | `GARMIN_MCP_MASTER_KEY_FILE` | `/data/keys/key-v1.json` | la valeur sélectionne le répertoire ; le nom de fichier appartient au serveur. |
 | `GARMIN_MCP_STATE_DIR` | `/data` | état hors base. |
 | `GARMIN_MCP_ENABLE_WRITE_TOOLS` | `false` | outils d'écriture (nécessite aussi la portée OAuth correspondante). |
+| `GARMIN_MCP_REQUIRE_ACCOUNT_APPROVAL` | `true` | ajout de ce dépôt : un nouveau compte attend une validation dans l'interface. |
 
 ### Conteneur
 
@@ -304,6 +346,7 @@ Toutes les routes `/api` sauf `/api/health` exigent une authentification.
 | `GET /api/accounts` | liste paginée. Paramètres : `search`, `status`, `linked`, `consent`, `sort`, `order`, `limit`, `offset`. |
 | `GET /api/accounts.csv` | même liste au format CSV, mêmes filtres. |
 | `GET /api/accounts/{id}` | détail d'un compte : signaux, acceptations de la notice, consentements, familles de jetons, audit. |
+| `POST /api/accounts/{id}/approval` | valide, bloque ou remet en attente. Corps JSON `{"state": "approved"\|"blocked"\|"pending", "note": "…"}`. |
 | `GET /api/docs` | documentation OpenAPI générée. |
 
 ```bash
@@ -351,10 +394,11 @@ l'interface.
 ## Compatibilité
 
 Vérifié contre le schéma de garmin-mcp après les migrations `0001_initial`,
-`0002_oauth_contract` et `0003_privacy_notice_consent` (cette dernière ajoutée par ce
-dépôt). L'interface ne dépend que des tables `principals`, `garmin_token_sets`,
-`consents`, `oauth_clients`, `auth_codes`, `token_families`, `mcp_tokens`,
-`audit_events` et `privacy_notice_consents`, et ne lit aucune colonne chiffrée.
+`0002_oauth_contract`, `0003_privacy_notice_consent` et `0004_account_approval` (les deux
+dernières ajoutées par ce dépôt). L'interface ne dépend que des tables `principals`,
+`garmin_token_sets`, `consents`, `oauth_clients`, `auth_codes`, `token_families`,
+`mcp_tokens`, `audit_events`, `privacy_notice_consents` et `account_approvals`, et ne lit
+aucune colonne chiffrée.
 
 ## Licence
 

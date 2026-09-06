@@ -157,6 +157,12 @@ type RemoteConfig struct {
 	// the page would still claim the acceptance was recorded.
 	PrivacyConsents PrivacyConsents
 
+	// Approvals reports whether an account has been approved. Nil turns the gate
+	// off, which is the upstream behaviour and what a deployment that does not
+	// require approval wants; the composition root supplies one only when the
+	// operator asked for the gate.
+	Approvals Approvals
+
 	// TTL caps one browser session's lifetime. The effective deadline is the
 	// earlier of this and the authorization transaction's own expiry. Zero means
 	// DefaultTTL.
@@ -188,6 +194,7 @@ type RemoteServer struct {
 	authorizations Authorizations
 	authenticator  Authenticator
 	privacy        PrivacyConsents
+	approvals      Approvals
 	notice         privacyNotice
 	sessions       *sessionRegistry
 	pages          *pageSet
@@ -232,6 +239,7 @@ func NewRemote(cfg RemoteConfig) (*RemoteServer, error) {
 		authorizations: cfg.Authorizations,
 		authenticator:  cfg.Authenticator,
 		privacy:        cfg.PrivacyConsents,
+		approvals:      cfg.Approvals,
 		notice:         notice,
 		sessions:       newSessionRegistry(orInt(cfg.MaxSessions, DefaultMaxSessions)),
 		pages:          pages,

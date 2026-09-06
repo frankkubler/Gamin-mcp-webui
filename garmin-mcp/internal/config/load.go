@@ -149,6 +149,7 @@ func withNetwork(cfg Config, store *viper.Viper) Config {
 	out.TrustedProxyCIDRs = stringList(store, keyTrustedProxyCIDRs)
 	out.AllowedOrigins = stringList(store, keyAllowedOrigins)
 	out.AllowInsecureHTTP = store.GetBool(keyAllowInsecureHTTP)
+	out.RequireAccountApproval = store.GetBool(keyRequireApproval)
 	out.TLSCertFile = strings.TrimSpace(store.GetString(keyTLSCertFile))
 	out.TLSKeyFile = strings.TrimSpace(store.GetString(keyTLSKeyFile))
 	return out

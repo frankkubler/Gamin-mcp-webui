@@ -94,8 +94,58 @@ func (s *RemoteServer) resolvePrincipal(
 		s.abandon(w, session)
 		return
 	}
+	if !s.approvedAccount(w, r, session, attempt.Principal) {
+		return
+	}
 	s.log(r.Context(), "a garmin login resolved a principal")
 	http.Redirect(w, r, routeRemoteConsent, http.StatusSeeOther)
+}
+
+// approvedAccount stops an account the operator has not approved, and reports whether
+// the login may go on.
+//
+// The check sits here, right after the Garmin login resolved a principal and before
+// anything is offered to grant, so a held account never reaches the consent page and
+// no acceptance, code or token is produced for it. The account itself exists by this
+// point — it had to, for the operator to have something to approve — and the page the
+// person is shown says so, with the privacy notice on it, because their data is
+// already stored whether or not the decision ever comes.
+//
+// A nil Approvals turns the gate off: that is the upstream behaviour, and the
+// composition root supplies one only when the operator asked for the gate.
+func (s *RemoteServer) approvedAccount(
+	w http.ResponseWriter, r *http.Request, session *remoteSession, principal string,
+) bool {
+	if s.approvals == nil {
+		return true
+	}
+	approved, err := s.approvals.AccountApproved(r.Context(), principal)
+	if err != nil {
+		// The same reasoning as the privacy store: neither answer is safe to
+		// assume. "Approved" would let a held account through, and "held" would
+		// tell someone their account is waiting when nobody knows.
+		s.unavailable(w)
+		return false
+	}
+	if approved {
+		return true
+	}
+
+	// The transaction is closed rather than left to expire: nothing is granted, and
+	// the client's own record of it ends now. The denial's redirect target is
+	// discarded on purpose — the person stays here, on a page that explains the
+	// wait, instead of being bounced back to a client that would only say "denied".
+	if _, denyErr := s.authorizations.Deny(r.Context(), session.capability); denyErr != nil {
+		s.log(r.Context(), "closing the transaction of a held account failed")
+	}
+	s.discard(session)
+	s.clearCookie(w)
+	s.log(r.Context(), "an account is waiting for the operator's approval")
+
+	data := emptyRemoteData("")
+	data.Privacy = privacyState{Version: s.notice.version}
+	s.pages.render(w, http.StatusForbidden, pagePending, data)
+	return false
 }
 
 // handleConsentForm renders the binding decision: the same client, redirect host,

@@ -4,6 +4,7 @@ package loginweb
 const (
 	pageConsent = "consent"
 	pageExpired = "expired"
+	pagePending = "pending"
 )
 
 // remoteStylesheetPath is the one asset a remote page references. It sits under the
@@ -64,5 +65,6 @@ func loadRemotePages() (*pageSet, error) {
 	// blocks the consent page includes, and is never served on its own.
 	return loadPageSet("pages/remote", []string{
 		pageDisclosure, pageCredentials, pageMFA, pageConsent, pageNotFound, pageExpired,
+		pagePending,
 	}, "privacy.html")
 }

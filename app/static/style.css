@@ -374,3 +374,32 @@ dialog th {
   color: var(--muted);
   font-size: 13px;
 }
+
+/* Les pastilles de validation reprennent les trois couleurs déjà en place : un compte
+   en attente n'est pas une anomalie, un compte bloqué en est une. */
+.badge--approved {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.badge--pending {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.badge--blocked {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.button--small {
+  padding: 3px 9px;
+  font-size: 12px;
+}

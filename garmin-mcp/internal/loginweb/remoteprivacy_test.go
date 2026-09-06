@@ -1,6 +1,7 @@
 package loginweb_test
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -158,5 +159,90 @@ func TestAConsentThatCannotBeRecordedStopsTheGrant(t *testing.T) {
 	wantStatus(t, resp, http.StatusServiceUnavailable, "POST /login/consent")
 	if _, grants, _ := h.authz.counts(); grants != 0 {
 		t.Errorf("grants = %d, want none when the acceptance could not be recorded", grants)
+	}
+}
+
+// The approval gate: an account the operator has not decided about reaches no page
+// that could grant anything.
+
+// fakeApprovals is the operator's decision under test control.
+type fakeApprovals struct {
+	approved map[string]bool
+	err      error
+	asked    int
+}
+
+func (f *fakeApprovals) AccountApproved(_ context.Context, principal string) (bool, error) {
+	f.asked++
+	if f.err != nil {
+		return false, f.err
+	}
+	return f.approved[principal], nil
+}
+
+// newGatedRemote is a remote profile with the approval gate wired in.
+func newGatedRemote(t *testing.T, approvals *fakeApprovals) *remoteHarness {
+	t.Helper()
+	return newRemoteWith(t, &fakeAuthenticator{loginAttempt: remoteSucceeded()}, approvals)
+}
+
+func TestAHeldAccountNeverReachesTheConsentPage(t *testing.T) {
+	t.Parallel()
+	h := newGatedRemote(t, &fakeApprovals{approved: map[string]bool{}})
+
+	h.authorize()
+	resp, page := h.submitCredentialsPage(h.continueToCredentials())
+
+	// The login succeeded and the account exists; what it may not do is go on.
+	wantStatus(t, resp, http.StatusForbidden, "POST /login/credentials for a held account")
+	if !strings.Contains(page, "attend la validation de l'exploitant") {
+		t.Error("the page does not say the account is waiting")
+	}
+	// The notice is on it: the account exists, so its data is already stored.
+	if !strings.Contains(page, "Ce que ce déploiement enregistre à votre sujet") {
+		t.Error("the pending page does not carry the privacy notice")
+	}
+	if _, grants, denials := h.authz.counts(); grants != 0 || denials != 1 {
+		t.Errorf("grants = %d denials = %d, want the transaction closed and nothing granted",
+			grants, denials)
+	}
+	if h.privacy.count() != 0 {
+		t.Error("a held account recorded a privacy acceptance")
+	}
+
+	// The session is gone with it: the consent page is not reachable by hand.
+	consent, _ := h.b.get(pathConsent)
+	if consent.StatusCode == http.StatusOK {
+		t.Error("the consent page is reachable after the account was held")
+	}
+}
+
+func TestAnApprovedAccountPassesTheGate(t *testing.T) {
+	t.Parallel()
+	approvals := &fakeApprovals{approved: map[string]bool{testPrincipal: true}}
+	h := newGatedRemote(t, approvals)
+
+	page := h.reachConsent()
+	resp := h.decide(page, decisionAllow)
+
+	wantStatus(t, resp, http.StatusSeeOther, "POST /login/consent")
+	if approvals.asked == 0 {
+		t.Error("the gate was never asked")
+	}
+	if _, grants, _ := h.authz.counts(); grants != 1 {
+		t.Errorf("grants = %d, want the approved account through", grants)
+	}
+}
+
+func TestAnUnreadableApprovalStoreStopsTheLogin(t *testing.T) {
+	t.Parallel()
+	h := newGatedRemote(t, &fakeApprovals{err: errors.New("the approval store is unreachable")})
+
+	h.authorize()
+	resp := h.submitRemoteCredentials(h.continueToCredentials())
+
+	wantStatus(t, resp, http.StatusServiceUnavailable, "POST /login/credentials")
+	if _, grants, _ := h.authz.counts(); grants != 0 {
+		t.Error("a grant went through while the approval store was unreadable")
 	}
 }

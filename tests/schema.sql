@@ -123,3 +123,11 @@ CREATE TABLE privacy_notice_consents (
 
 CREATE INDEX idx_privacy_notice_consents_principal
     ON privacy_notice_consents (principal_id, accepted_at);
+
+CREATE TABLE account_approvals (
+    principal_id TEXT PRIMARY KEY REFERENCES principals (id) ON DELETE CASCADE,
+    state        TEXT NOT NULL CHECK (state IN ('approved', 'blocked')),
+    decided_at   TEXT NOT NULL,
+    decided_by   TEXT NOT NULL DEFAULT '',
+    note         TEXT NOT NULL DEFAULT ''
+);

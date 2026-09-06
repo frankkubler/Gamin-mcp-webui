@@ -54,6 +54,19 @@ type PrivacyConsents interface {
 	AcceptPrivacyNotice(ctx context.Context, principal, digest, version string) error
 }
 
+// Approvals reports the operator's decision about an account.
+//
+// The interface lives with its consumer and is deliberately narrow: this package
+// passes an opaque principal identifier and gets a yes or a no. It never sees who
+// decided, when, or why — that belongs to the interface an operator uses, not to a
+// login page.
+type Approvals interface {
+	// AccountApproved reports whether this account may be used. An account nobody
+	// has decided about must report false, so a new account is held rather than
+	// let through.
+	AccountApproved(ctx context.Context, principal string) (bool, error)
+}
+
 // privacyNotice is the identity of the text this build serves.
 type privacyNotice struct {
 	// version is the human label.

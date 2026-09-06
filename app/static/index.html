@@ -60,6 +60,15 @@
         </select>
       </label>
       <label class="field">
+        <span>Validation</span>
+        <select id="approval">
+          <option value="">Tous</option>
+          <option value="pending">En attente</option>
+          <option value="approved">Validés</option>
+          <option value="blocked">Bloqués</option>
+        </select>
+      </label>
+      <label class="field">
         <span>Notice acceptée</span>
         <select id="consent">
           <option value="">Tous</option>
@@ -78,6 +87,7 @@
         <thead>
           <tr>
             <th scope="col"><button type="button" data-sort="email">Compte</button></th>
+            <th scope="col">Validation</th>
             <th scope="col"><button type="button" data-sort="status">État</button></th>
             <th scope="col"><button type="button" data-sort="created_at">Compte créé le</button></th>
             <th scope="col">
@@ -96,7 +106,7 @@
         </thead>
         <tbody id="rows">
           <tr class="empty">
-            <td colspan="7">Chargement…</td>
+            <td colspan="8">Chargement…</td>
           </tr>
         </tbody>
       </table>

@@ -216,3 +216,53 @@ def test_agregat_du_consentement(accounts: list[dict[str, object]], now: datetim
     stats = queries.summarize(accounts, now=now)
     assert stats["privacy_consent"] == 2
     assert stats["privacy_consent_missing"] == 2
+
+
+def test_lecriture_est_bornee_a_la_table_des_validations(database_path: Path) -> None:
+    """L'autorisateur SQLite refuse toute écriture hors de account_approvals."""
+
+    database = Database(database_path)
+    with database.connect_write() as connection:
+        # Ce qui est permis.
+        queries.set_approval(connection, "p-dormant", "approved", decided_by="test")
+
+        # Et tout le reste, quelle que soit la table visée.
+        interdits = [
+            "DELETE FROM principals",
+            "UPDATE principals SET email_normalized = 'pirate@exemple.fr'",
+            "INSERT INTO consents VALUES"
+            " ('p-new', 'cli', '', '', 'x', '2026-01-01T00:00:00Z', NULL)",
+            "DELETE FROM privacy_notice_consents",
+            "UPDATE mcp_tokens SET revoked_at = NULL",
+            "DROP TABLE principals",
+            "ALTER TABLE principals ADD COLUMN porte_derobee TEXT",
+            "CREATE TABLE ailleurs (x TEXT)",
+        ]
+        for requete in interdits:
+            with pytest.raises(sqlite3.DatabaseError):
+                connection.execute(requete)
+
+        # La lecture, elle, reste possible : l'écriture relit ce qu'elle a posé.
+        assert connection.execute("SELECT COUNT(*) FROM principals").fetchone()[0] == 4
+
+
+def test_letat_de_validation_est_lu(accounts: list[dict[str, object]]) -> None:
+    assert by_id(accounts, "p-active")["approval_state"] == "approved"
+    assert by_id(accounts, "p-active")["approval_decided_by"] == "admin"
+    # Aucune ligne pour ce compte : « en attente » est l'absence de décision.
+    assert by_id(accounts, "p-dormant")["approval_state"] == "pending"
+    assert by_id(accounts, "p-dormant")["approval_decided_at"] is None
+    assert by_id(accounts, "p-new")["approval_state"] == "blocked"
+
+
+def test_decision_puis_relecture(database_path: Path, now: datetime) -> None:
+    database = Database(database_path)
+    with database.connect_write() as connection:
+        queries.set_approval(
+            connection, "p-dormant", "blocked", decided_by="admin", note="parti", now=now
+        )
+    with database.connect() as connection:
+        comptes = queries.list_accounts(connection, now=now)
+    dormant = by_id(comptes, "p-dormant")
+    assert dormant["approval_state"] == "blocked"
+    assert dormant["approval_note"] == "parti"

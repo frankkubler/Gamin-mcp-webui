@@ -170,6 +170,19 @@ type Config struct {
 	// cleartext non-loopback origin. It defaults to false and must stay false
 	// in production.
 	AllowInsecureHTTP bool
+	// RequireAccountApproval holds a new account until an operator approves it, in
+	// the web interface or by hand in the database. It is a fork addition and
+	// defaults to true: a deployment that turns it off is back to the upstream
+	// behaviour, where an account may be used as soon as its Garmin login succeeds.
+	//
+	// It is checked at the end of the browser login and again on every access
+	// token, so withdrawing an approval stops an account at its next request.
+	//
+	// Like database-path, it is accepted but unused in stdio mode, which has one
+	// account and it is the operator's own. It is not refused there, because unlike
+	// the remote-only settings it carries a default of its own: refusing it would
+	// make every stdio start fail on a value nobody set.
+	RequireAccountApproval bool
 	// TLSCertFile is the PEM certificate chain for the HTTPS listener.
 	TLSCertFile string
 	// TLSKeyFile is the PEM private key for the HTTPS listener.

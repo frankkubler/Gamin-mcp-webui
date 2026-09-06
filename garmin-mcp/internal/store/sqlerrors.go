@@ -112,6 +112,12 @@ var (
 	// ErrTokenRevoked means the token, or the family it belongs to, is revoked.
 	ErrTokenRevoked = errors.New("store: token is revoked")
 
+	// ErrAccountNotApproved means the account behind the token is waiting for an
+	// operator's decision, or was refused one. It is distinct from ErrTokenRevoked
+	// because the token itself is intact: approving the account makes it work
+	// again, where a revoked token never does.
+	ErrAccountNotApproved = errors.New("store: account is not approved")
+
 	// ErrRefreshTokenReuse means a refresh token that had already been rotated was
 	// presented again. The whole family is revoked before this error is returned,
 	// so the caller does not have to remember to do it.

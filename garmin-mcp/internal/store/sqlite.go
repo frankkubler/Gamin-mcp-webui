@@ -102,6 +102,11 @@ type SQLiteStore struct {
 	// revocations receives an event after every revocation cascade commits. Nil
 	// means nobody is listening, which is the single-user shape.
 	revocations RevocationSink
+
+	// requireApproval gates every access token on the operator having approved the
+	// account. False is the upstream behaviour, where an account may be used from
+	// the instant its Garmin login succeeds.
+	requireApproval bool
 }
 
 // SQLiteConfig configures a SQLiteStore. Every field is explicit: nothing here is
@@ -133,6 +138,13 @@ type SQLiteConfig struct {
 	// Now is the clock. Nil selects time.Now. It exists so expiry is tested by
 	// moving time rather than by sleeping.
 	Now func() time.Time
+
+	// RequireApproval makes an account unusable until an operator approves it. It
+	// is checked on every access token, so withdrawing an approval stops the
+	// account at its next request rather than at its next login. False is the
+	// upstream behaviour and the zero value, so a caller that knows nothing about
+	// approval keeps working unchanged.
+	RequireApproval bool
 
 	// Revocations receives an event after each revocation cascade commits, so a
 	// live session can be closed rather than surviving until its next request. Nil
@@ -169,6 +181,7 @@ func OpenSQLite(ctx context.Context, cfg SQLiteConfig) (*SQLiteStore, error) {
 		return nil, errors.Join(err, db.Close())
 	}
 	opened.revocations = cfg.Revocations
+	opened.requireApproval = cfg.RequireApproval
 	return opened, nil
 }
 

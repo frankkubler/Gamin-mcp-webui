@@ -213,6 +213,10 @@ type storedToken struct {
 	revoked        bool
 	familyRevoked  bool
 	consentRevoked bool
+	// accountPending reports that the operator has not approved this account, or
+	// has withdrawn the approval. It only decides anything when the store was
+	// opened with RequireApproval.
+	accountPending bool
 }
 
 // selectTokenSQL reads a token with everything a decision needs, in one round trip.
@@ -224,7 +228,9 @@ SELECT f.id, f.principal_id, f.client_id, f.resource, t.scopes, t.audience, t.ge
        f.revoked_at IS NOT NULL,
        NOT EXISTS (SELECT 1 FROM consents c
                     WHERE c.principal_id = f.principal_id AND c.client_id = f.client_id
-                      AND c.revoked_at IS NULL)
+                      AND c.revoked_at IS NULL),
+       NOT EXISTS (SELECT 1 FROM account_approvals a
+                    WHERE a.principal_id = f.principal_id AND a.state = 'approved')
   FROM mcp_tokens t
   JOIN token_families f ON f.id = t.family_id
  WHERE t.token_hash = ? AND t.kind = ?`
@@ -241,7 +247,7 @@ func readToken(ctx context.Context, q Querier, hash, kind string) (storedToken, 
 	err := q.QueryRowContext(ctx, selectTokenSQL, hash, kind).Scan(
 		&token.familyID, &token.principalID, &token.clientID, &token.resource, &token.scopes,
 		&token.audience, &generation, &issuedText, &expiresText, &consumedAt, &token.revoked,
-		&token.familyRevoked, &token.consentRevoked)
+		&token.familyRevoked, &token.consentRevoked, &token.accountPending)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return storedToken{}, fmt.Errorf("store: no %s token matches: %w", kind, ErrTokenNotFound)
@@ -310,9 +316,12 @@ func (s *SQLiteStore) LookupAccessToken(ctx context.Context, token Secret) (Acce
 	return stored.grant(), nil
 }
 
-// checkUsable applies the on-access revocation and expiry rules.
+// checkUsable applies the on-access revocation, approval and expiry rules.
 func (s *SQLiteStore) checkUsable(stored storedToken) error {
 	if err := checkNotRevoked(stored); err != nil {
+		return err
+	}
+	if err := s.checkApproved(stored); err != nil {
 		return err
 	}
 	if !stored.expiresAt.After(s.now().UTC()) {
@@ -320,6 +329,22 @@ func (s *SQLiteStore) checkUsable(stored storedToken) error {
 			stored.expiresAt.Format(timeLayout), ErrTokenExpired)
 	}
 	return nil
+}
+
+// checkApproved refuses a token whose account the operator has not approved.
+//
+// It is applied here, on access, rather than only at login: an approval that is
+// withdrawn has to stop the account at its next request, not at its next sign-in,
+// or withdrawing it would mean nothing for as long as a live token lasts.
+//
+// The check does nothing when the store was opened without RequireApproval, which is
+// the upstream shape.
+func (s *SQLiteStore) checkApproved(stored storedToken) error {
+	if !s.requireApproval || !stored.accountPending {
+		return nil
+	}
+	return fmt.Errorf("store: principal %s is not approved: %w",
+		stored.principalID, ErrAccountNotApproved)
 }
 
 // checkNotRevoked is the revocation half of checkUsable, without the expiry half. The

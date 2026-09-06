@@ -113,9 +113,9 @@ def test_le_consentement_est_expose(client: TestClient) -> None:
 def test_le_csv_porte_le_consentement(client: TestClient) -> None:
     lignes = client.get("/api/accounts.csv", headers=AUTH).text.strip().splitlines()
     assert "privacy_accepted_at" in lignes[0]
-    assert lignes[1].endswith("oui,2026-07-08T12:00:00Z,2026-09-06")
-    # Le compte jamais connecte n'a rien accepte : les colonnes restent vides.
-    assert lignes[-1].endswith("non,,")
+    assert "oui,2026-07-08T12:00:00Z,2026-09-06," in lignes[1]
+    # Le compte jamais connecté n'a rien accepté : ses colonnes de notice sont vides.
+    assert ",non,,," in lignes[-1]
 
 
 def test_tri_et_pagination(client: TestClient) -> None:
@@ -245,3 +245,120 @@ def test_reglages_depuis_l_environnement() -> None:
 def test_seuils_incoherents_refuses() -> None:
     with pytest.raises(ConfigError):
         load_settings({"WEBUI_PASSWORD": "x", "WEBUI_ACTIVE_DAYS": "30", "WEBUI_IDLE_DAYS": "7"})
+
+
+JSON = {**AUTH, "Content-Type": "application/json"}
+
+
+def test_validation_dun_compte_en_attente(client: TestClient) -> None:
+    avant = client.get("/api/accounts/p-dormant", headers=AUTH).json()
+    assert avant["approval_state"] == "pending"
+
+    reponse = client.post(
+        "/api/accounts/p-dormant/approval",
+        headers=JSON,
+        json={"state": "approved", "note": "vu en réunion"},
+    )
+    assert reponse.status_code == 200
+    assert reponse.json()["approval_state"] == "approved"
+
+    apres = client.get("/api/accounts/p-dormant", headers=AUTH).json()
+    assert apres["approval_state"] == "approved"
+    # L'identité de l'opérateur authentifié est enregistrée, pas celle qu'il déclare.
+    assert apres["approval_decided_by"] == USERNAME
+    assert apres["approval_note"] == "vu en réunion"
+    assert apres["approval_decided_at"]
+
+
+def test_remise_en_attente(client: TestClient) -> None:
+    reponse = client.post(
+        "/api/accounts/p-active/approval", headers=JSON, json={"state": "pending"}
+    )
+    assert reponse.status_code == 200
+
+    # « En attente » est l'absence de décision : la ligne est retirée, pas réécrite.
+    apres = client.get("/api/accounts/p-active", headers=AUTH).json()
+    assert apres["approval_state"] == "pending"
+    assert apres["approval_decided_at"] is None
+
+
+def test_validation_dun_compte_inconnu(client: TestClient) -> None:
+    reponse = client.post("/api/accounts/absent/approval", headers=JSON, json={"state": "approved"})
+    assert reponse.status_code == 404
+
+
+def test_etat_invalide_refuse(client: TestClient) -> None:
+    reponse = client.post(
+        "/api/accounts/p-active/approval", headers=JSON, json={"state": "peut-être"}
+    )
+    assert reponse.status_code == 422
+
+
+def test_note_avec_saut_de_ligne_refusee(client: TestClient) -> None:
+    reponse = client.post(
+        "/api/accounts/p-active/approval",
+        headers=JSON,
+        json={"state": "approved", "note": "deux\nlignes"},
+    )
+    assert reponse.status_code == 422
+
+
+def test_validation_sans_authentification(client: TestClient) -> None:
+    reponse = client.post(
+        "/api/accounts/p-active/approval",
+        headers={"Content-Type": "application/json"},
+        json={"state": "approved"},
+    )
+    assert reponse.status_code == 401
+
+
+def test_ecriture_refusee_hors_json(client: TestClient) -> None:
+    # Un formulaire HTML d'un site tiers ne peut envoyer que ces types-là ; les
+    # refuser est ce qui empêche une écriture déclenchée depuis une autre page.
+    reponse = client.post(
+        "/api/accounts/p-active/approval",
+        headers={**AUTH, "Content-Type": "application/x-www-form-urlencoded"},
+        content="state=approved",
+    )
+    assert reponse.status_code == 415
+
+
+def test_ecriture_refusee_depuis_une_autre_origine(client: TestClient) -> None:
+    reponse = client.post(
+        "/api/accounts/p-active/approval",
+        headers={**JSON, "Origin": "https://ailleurs.exemple"},
+        json={"state": "approved"},
+    )
+    assert reponse.status_code == 403
+
+
+def test_filtre_par_etat_de_validation(client: TestClient) -> None:
+    attente = client.get("/api/accounts?approval=pending", headers=AUTH).json()
+    assert [item["id"] for item in attente["items"]] == ["p-dormant"]
+
+    bloques = client.get("/api/accounts?approval=blocked", headers=AUTH).json()
+    assert [item["id"] for item in bloques["items"]] == ["p-new"]
+
+
+def test_agregat_des_validations(client: TestClient) -> None:
+    stats = client.get("/api/stats", headers=AUTH).json()
+    assert stats["by_approval"] == {"pending": 1, "approved": 2, "blocked": 1}
+    assert stats["approval_pending"] == 1
+
+
+def test_validation_impossible_sur_une_base_en_lecture_seule(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Un volume monté en lecture seule ne permet pas de décider, et le dit."""
+
+    import sqlite3
+
+    def refuser(*args: object, **kwargs: object) -> None:
+        raise sqlite3.OperationalError("attempt to write a readonly database")
+
+    monkeypatch.setattr(sqlite3, "connect", refuser)
+    reponse = client.post(
+        "/api/accounts/p-dormant/approval", headers=JSON, json={"state": "approved"}
+    )
+    assert reponse.status_code == 409
+    assert "écriture" in reponse.json()["detail"]
