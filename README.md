@@ -81,6 +81,20 @@ Un compte dont aucun signal ne dépasse sa date de création est classé **jamai
   et n'est déchiffrable qu'avec la clé maître du serveur. L'interface ne la demande pas et
   n'affiche donc que l'e-mail.
 
+## Le guide destiné aux utilisateurs
+
+[docs/connecter-garmin-a-claude.md](docs/connecter-garmin-a-claude.md) est la notice à
+donner aux personnes qu'on invite sur un déploiement : brancher le connecteur dans
+Claude, se connecter à Garmin, accepter la notice de confidentialité, puis attendre la
+validation de l'exploitant. Elle décrit aussi ce que le serveur enregistre et ce qu'il
+n'enregistre pas, en langage courant.
+
+Elle est écrite pour **ce** déploiement : l'URL du serveur MCP et l'identifiant de
+client OAuth qu'elle donne sont ceux d'une installation particulière, à remplacer par
+les vôtres. Les captures des écrans de Claude sont à déposer dans
+[docs/captures/](docs/captures/), qui liste celles que le guide attend ; celles des deux
+pages servies par le serveur lui-même sont déjà là.
+
 ## Le consentement de l'utilisateur
 
 Ce dépôt ajoute au serveur amont une **fenêtre de consentement** : la page qui conclut
