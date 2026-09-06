@@ -28,6 +28,10 @@ app = ["static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# La racine du depot doit etre importable pour que `from app import ...` marche.
+# `python -m pytest` l'ajoute a sys.path, la commande `pytest` non : sans cette
+# ligne, la suite passe en local et echoue en CI.
+pythonpath = ["."]
 filterwarnings = ["ignore::DeprecationWarning", "ignore::UserWarning"]
 
 [tool.ruff]
