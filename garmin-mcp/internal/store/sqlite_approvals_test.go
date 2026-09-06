@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tamcore/garmin-mcp/internal/store"
 )
@@ -183,6 +184,46 @@ func TestAPendingAccountCannotUseItsAccessToken(t *testing.T) {
 	}
 	if _, err := opened.LookupAccessToken(ctx, grant.access); err != nil {
 		t.Fatalf("LookupAccessToken after approval: %v", err)
+	}
+}
+
+func TestAPendingAccountCannotAuthorizeAnMCPRequest(t *testing.T) {
+	t.Parallel()
+	opened := newApprovalStore(t)
+	ctx := t.Context()
+
+	grant := seedGrant(t, opened)
+
+	// This is the read an MCP request actually goes through: the OAuth server's
+	// VerifyAccessToken calls it, by way of the oauthstore adapter. Gating only
+	// LookupAccessToken would leave this path open, so the gate has to be here.
+	if _, err := opened.ReadAccessToken(ctx, grant.access); !errors.Is(
+		err, store.ErrAccountNotApproved) {
+		t.Fatalf("err = %v, want ErrAccountNotApproved on the request path", err)
+	}
+
+	// The refresh token reads back: the grant that consumes it is refused by
+	// RotateRefreshToken, and the revocation endpoint has to keep working for an
+	// account that was just blocked.
+	if _, err := opened.ReadRefreshToken(ctx, grant.refresh); err != nil {
+		t.Errorf("ReadRefreshToken: %v, want the record for the revocation path", err)
+	}
+	if _, err := opened.RotateRefreshToken(ctx, store.RefreshRotation{
+		Presented:        grant.refresh,
+		NextAccessToken:  store.NewSecret("next-access"),
+		NextRefreshToken: store.NewSecret("next-refresh"),
+		AccessLifetime:   10 * time.Minute,
+		RefreshLifetime:  24 * time.Hour,
+	}); !errors.Is(err, store.ErrAccountNotApproved) {
+		t.Errorf("RotateRefreshToken err = %v, want the rotation refused too", err)
+	}
+
+	if _, err := opened.SetAccountApproval(
+		ctx, grant.principal.ID, store.ApprovalApproved, "operateur", ""); err != nil {
+		t.Fatalf("SetAccountApproval: %v", err)
+	}
+	if _, err := opened.ReadAccessToken(ctx, grant.access); err != nil {
+		t.Errorf("ReadAccessToken after approval: %v", err)
 	}
 }
 

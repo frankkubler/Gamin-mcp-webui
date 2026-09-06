@@ -152,10 +152,12 @@ Quelqu'un qui se connecte avec ses identifiants Garmin obtient un compte, voit u
 qui le lui dit, et n'obtient rien d'autre : aucun consentement enregistré, aucun code
 d'autorisation, aucun jeton.
 
+![La page qu'un compte non validé obtient à la fin du login](docs/en-attente.png)
+
 | Où | Ce qui se passe |
 | -- | --------------- |
 | Fin du login navigateur | un compte non validé voit la page « en attente », avec la notice de confidentialité, et sa transaction OAuth est close. |
-| À chaque requête MCP | `LookupAccessToken` refuse le jeton d'un compte non validé. Retirer une validation coupe l'accès **à la requête suivante**, pas au prochain login. |
+| À chaque requête MCP | la lecture du jeton d'accès refuse un compte non validé. Retirer une validation coupe l'accès **à la requête suivante**, pas au prochain login. |
 | Dans l'interface | colonne *Validation*, filtre, tuile, et les boutons *Valider* / *Bloquer* / *Remettre en attente*. |
 
 Trois états : **en attente** (personne n'a décidé), **validé**, **bloqué**. « En attente »

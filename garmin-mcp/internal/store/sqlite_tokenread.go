@@ -59,10 +59,11 @@ func (r TokenRecord) IsExpired(now time.Time) bool { return !now.Before(r.Expire
 
 // ReadAccessToken returns the stored record for a presented access token.
 //
-// It reports ErrTokenNotFound for unknown material and ErrTokenRevoked for a revoked
-// token, a revoked family or a withdrawn consent. It does not judge expiry: the record
-// is returned and the caller decides. Use LookupAccessToken for the resource-server
-// read that refuses an expired token itself.
+// It reports ErrTokenNotFound for unknown material, ErrTokenRevoked for a revoked
+// token, a revoked family or a withdrawn consent, and ErrAccountNotApproved when the
+// operator has not approved the account and the store requires approval. It does not
+// judge expiry: the record is returned and the caller decides. Use LookupAccessToken
+// for the resource-server read that refuses an expired token itself.
 func (s *SQLiteStore) ReadAccessToken(ctx context.Context, token Secret) (TokenRecord, error) {
 	return s.readTokenRecord(ctx, purposeAccessToken, tokenKindAccess, token)
 }
@@ -94,6 +95,19 @@ func (s *SQLiteStore) readTokenRecord(ctx context.Context, purpose, kind string,
 	}
 	if err := checkNotRevoked(stored); err != nil {
 		return TokenRecord{}, err
+	}
+	// The approval gate applies to the access token and not to the refresh token,
+	// because this is where it decides anything: VerifyAccessToken authorizes an MCP
+	// request through ReadAccessToken, so refusing here is what stops a held account
+	// at its next request. A refresh token read is not an authorization — the grant
+	// that consumes it goes through RotateRefreshToken, which applies the gate in the
+	// transaction that mints the next pair — and refusing it here would also break
+	// the revocation endpoint, which has to keep working for an account the operator
+	// has just blocked.
+	if kind == tokenKindAccess {
+		if err := s.checkApproved(stored); err != nil {
+			return TokenRecord{}, err
+		}
 	}
 	return stored.record(kind), nil
 }

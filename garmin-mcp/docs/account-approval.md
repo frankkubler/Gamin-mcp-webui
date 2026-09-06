@@ -30,11 +30,21 @@ page, which carries the privacy notice, because their account exists and their d
 already stored whether or not the decision ever comes. The OAuth transaction is closed
 rather than left to expire.
 
-**On every access token** — `internal/store/sqlite_tokens.go`, `checkApproved`. The
-token select carries the approval state, and a token whose account is not approved is
-refused with `ErrAccountNotApproved`. This is what makes a withdrawn approval bite at
-the account's next request instead of at its next sign-in, which is what an operator
-who has just blocked someone expects.
+**On every access token.** The token select carries the approval state, and
+`checkApproved` in `internal/store/sqlite_tokens.go` refuses a token whose account is
+not approved, with `ErrAccountNotApproved`. This is what makes a withdrawn approval
+bite at the account's next request instead of at its next sign-in, which is what an
+operator who has just blocked someone expects.
+
+Which reads apply it matters, because only one of them is on the path an MCP request
+takes:
+
+| Read | Gated | Why |
+| ---- | ----- | --- |
+| `ReadAccessToken` | yes | `oauthserver.VerifyAccessToken` authorizes every MCP request through it, by way of the `oauthstore` adapter. This is the one that stops a held account. |
+| `RotateRefreshToken` | yes | it mints the next pair; a held account must not refresh its way to a working token. |
+| `ReadRefreshToken` | no | it is not an authorization. The grant that consumes the token is gated above, and the RFC 7009 revocation endpoint reads it — revoking has to keep working for an account that was just blocked. |
+| `LookupAccessToken` | yes | the resource-server read that judges expiry itself. Nothing in this build calls it today; it is gated for the caller that will. |
 
 The error is distinct from `ErrTokenRevoked` on purpose: the token is intact, and
 approving the account makes it work again.
