@@ -199,15 +199,21 @@ func TestAHeldAccountAcceptsTheNoticeAndStillGetsNothing(t *testing.T) {
 	}
 	// And the page says what will happen, rather than offering an Allow that
 	// silently grants nothing.
-	if !strings.Contains(page, "attend la validation de l'exploitant") {
+	if !strings.Contains(page, "Votre compte est en attente de validation") {
 		t.Error("the consent page does not say the account is waiting")
 	}
 
 	resp, body := h.decidePage(page, decisionAllow)
 
 	wantStatus(t, resp, http.StatusForbidden, "POST /login/consent for a held account")
-	if !strings.Contains(body, "venez d'accepter est enregistré") {
-		t.Error("the pending page does not confirm that the acceptance was stored")
+	for _, want := range []string{
+		"Votre compte est en attente de validation",
+		"Revenez plus tard",
+		"venez d'accepter est enregistré",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the pending page does not carry %q", want)
+		}
 	}
 	// The acceptance is stored; the access is not granted.
 	if h.privacy.count() != 1 {
@@ -242,7 +248,7 @@ func TestOnceApprovedTheNoticeIsNotAskedAgain(t *testing.T) {
 	if strings.Contains(second, `name="privacy_accepted"`) {
 		t.Error("the notice was asked again after approval")
 	}
-	if strings.Contains(second, "attend la validation") {
+	if strings.Contains(second, "en attente de validation") {
 		t.Error("the consent page still says the account is waiting")
 	}
 

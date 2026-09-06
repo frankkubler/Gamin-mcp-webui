@@ -1,14 +1,18 @@
 {{define "title"}}Compte en attente de validation{{end}}
 {{define "content"}}
-<p>Votre connexion Garmin a réussi et votre compte existe sur ce serveur. Ce que vous
-venez d'accepter est enregistré. Mais votre compte <strong>attend la validation de
-l'exploitant</strong> : aucun accès n'a été accordé au client qui vous a envoyé ici, et
-aucun jeton n'a été émis.</p>
+<p class="message"><strong>Votre compte est en attente de validation.</strong>
+Revenez plus tard : dès que l'exploitant l'aura validé, relancez cette autorisation
+depuis votre client et l'accès vous sera accordé.</p>
 
-<p>Rien d'autre n'est à faire de votre côté. Une fois la validation confirmée,
-relancez cette autorisation depuis votre client : la notice ne vous sera pas redemandée.
-Si vous ne savez pas à qui vous adresser, c'est la personne qui vous a donné l'adresse de
-ce serveur.</p>
+<p>Votre connexion Garmin a réussi et votre compte existe sur ce serveur. Ce que vous
+venez d'accepter est enregistré. Mais tant que la validation n'est pas faite,
+<strong>aucun accès n'a été accordé</strong> au client qui vous a envoyé ici et aucun
+jeton n'a été émis : ce client vous signalera probablement une autorisation refusée,
+c'est normal à ce stade.</p>
+
+<p>Rien d'autre n'est à faire de votre côté, et rien n'est à recommencer : la notice ne
+vous sera pas redemandée. Si vous ne savez pas qui valide, ni sous quel délai,
+adressez-vous à la personne qui vous a donné l'adresse de ce serveur.</p>
 
 <section class="privacy" aria-labelledby="privacy-heading">
 <h2 id="privacy-heading">Rappel : ce que ce déploiement enregistre à votre sujet</h2>
