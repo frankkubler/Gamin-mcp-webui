@@ -1,0 +1,40 @@
+# Exemple de deploiement a cote d'un garmin-mcp existant.
+#
+# L'interface ne partage avec garmin-mcp que le volume de donnees, monte en
+# lecture seule. garmin-mcp ouvre sa base en WAL : sur un montage :ro, SQLite ne
+# peut pas ouvrir le fichier -shm, l'interface bascule alors automatiquement sur
+# une copie temporaire (voir app/db.py). Si vous preferez la lecture directe,
+# montez le volume sans :ro — l'interface force malgre tout PRAGMA query_only.
+
+services:
+  garmin-mcp-webui:
+    build: .
+    # image: ghcr.io/frankkubler/gamin-mcp-webui:latest
+    container_name: garmin-mcp-webui
+    restart: unless-stopped
+    environment:
+      WEBUI_DATABASE_PATH: /data/garmin.db
+      WEBUI_USERNAME: admin
+      WEBUI_PASSWORD: ${WEBUI_PASSWORD:?definissez WEBUI_PASSWORD dans .env}
+      WEBUI_API_TOKEN: ${WEBUI_API_TOKEN:-}
+      WEBUI_ACTIVE_DAYS: "7"
+      WEBUI_IDLE_DAYS: "30"
+      WEBUI_MASK_EMAILS: "0"
+      WEBUI_TITLE: "Comptes garmin-mcp"
+    volumes:
+      - garmin-mcp-data:/data:ro
+    ports:
+      - "127.0.0.1:8080:8080"
+    tmpfs:
+      - /tmp
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  # Le volume ecrit par le conteneur garmin-mcp (adaptez le nom ou remplacez par
+  # un bind mount vers le repertoire qui contient garmin.db).
+  garmin-mcp-data:
+    external: true

@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>garmin-mcp — comptes et dernière connexion</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%232f6f4e' stroke-width='4'/%3E%3Cpath d='M16 8v9l6 3' fill='none' stroke='%232f6f4e' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar__identity">
+        <h1 id="page-title">Comptes garmin-mcp</h1>
+        <p class="topbar__source" id="source-line">Chargement de la source de données…</p>
+      </div>
+      <div class="topbar__actions">
+        <label class="switch">
+          <input type="checkbox" id="auto-refresh" />
+          <span>Actualisation auto (60 s)</span>
+        </label>
+        <a class="button" id="export-csv" href="/api/accounts.csv">Export CSV</a>
+        <button class="button button--primary" id="refresh" type="button">Actualiser</button>
+      </div>
+    </header>
+
+    <p class="banner" id="banner" hidden></p>
+
+    <section class="tiles" id="tiles" aria-label="Indicateurs"></section>
+
+    <section class="filters" aria-label="Filtres">
+      <label class="field">
+        <span>Recherche</span>
+        <input
+          type="search"
+          id="search"
+          placeholder="e-mail ou identifiant interne"
+          autocomplete="off"
+        />
+      </label>
+      <label class="field">
+        <span>État</span>
+        <select id="status">
+          <option value="">Tous</option>
+          <option value="actif">Actifs</option>
+          <option value="inactif">Inactifs</option>
+          <option value="dormant">Dormants</option>
+          <option value="jamais_connecte">Jamais connectés</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Compte Garmin lié</span>
+        <select id="linked">
+          <option value="">Tous</option>
+          <option value="oui">Lié</option>
+          <option value="non">Non lié</option>
+        </select>
+      </label>
+      <p class="filters__count" id="result-count"></p>
+    </section>
+
+    <main>
+      <table class="accounts" id="accounts">
+        <caption class="sr-only">
+          Comptes créés sur le serveur garmin-mcp et date de dernière connexion
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col"><button type="button" data-sort="email">Compte</button></th>
+            <th scope="col"><button type="button" data-sort="status">État</button></th>
+            <th scope="col"><button type="button" data-sort="created_at">Compte créé le</button></th>
+            <th scope="col">
+              <button type="button" data-sort="last_seen_at" aria-sort="descending">
+                Dernière connexion
+              </button>
+            </th>
+            <th scope="col">Signal retenu</th>
+            <th scope="col">
+              <button type="button" data-sort="clients_authorized">Clients</button>
+            </th>
+          </tr>
+        </thead>
+        <tbody id="rows">
+          <tr class="empty">
+            <td colspan="6">Chargement…</td>
+          </tr>
+        </tbody>
+      </table>
+    </main>
+
+    <dialog id="detail">
+      <article id="detail-body"></article>
+      <form method="dialog" class="detail__close">
+        <button class="button" value="close">Fermer</button>
+      </form>
+    </dialog>
+
+    <footer class="footnote">
+      <p>
+        La base de garmin-mcp ne stocke pas de colonne « dernière connexion ». La valeur affichée
+        est dérivée du signal horodaté le plus récent du compte ; la colonne « Signal retenu » dit
+        lequel. Consultez le <code>README</code> pour les limites de rétention.
+      </p>
+    </footer>
+
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>
