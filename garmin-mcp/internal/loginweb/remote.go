@@ -116,6 +116,10 @@ type Authorizations interface {
 	Disclose(ctx context.Context, capability string) (Disclosure, error)
 	// AttachPrincipal records the principal a completed Garmin login resolved to.
 	AttachPrincipal(ctx context.Context, capability, principal string) error
+	// Principal reports the principal a transaction is bound to, empty before the
+	// Garmin login has resolved one. It is the opaque internal identifier, never
+	// an e-mail address, and it is what the privacy consent record is keyed on.
+	Principal(ctx context.Context, capability string) (string, error)
 	// Grant records consent and issues the authorization code, which makes the
 	// transaction terminal.
 	Grant(ctx context.Context, capability string) (Completion, error)
@@ -148,6 +152,10 @@ type RemoteConfig struct {
 	Authorizations Authorizations
 	// Authenticator runs the Garmin login. Required.
 	Authenticator Authenticator
+	// PrivacyConsents records the acceptance of the privacy notice. Required: a
+	// consent gate that a missing field switches off is worse than none, because
+	// the page would still claim the acceptance was recorded.
+	PrivacyConsents PrivacyConsents
 
 	// TTL caps one browser session's lifetime. The effective deadline is the
 	// earlier of this and the authorization transaction's own expiry. Zero means
@@ -179,6 +187,8 @@ type RemoteConfig struct {
 type RemoteServer struct {
 	authorizations Authorizations
 	authenticator  Authenticator
+	privacy        PrivacyConsents
+	notice         privacyNotice
 	sessions       *sessionRegistry
 	pages          *pageSet
 	logger         *slog.Logger
@@ -197,6 +207,9 @@ func NewRemote(cfg RemoteConfig) (*RemoteServer, error) {
 	if cfg.Authenticator == nil {
 		return nil, ErrNoAuthenticator
 	}
+	if cfg.PrivacyConsents == nil {
+		return nil, ErrNoPrivacyConsents
+	}
 	if cfg.TTL < 0 || cfg.MaxAttempts < 0 || cfg.MaxSessions < 0 || cfg.HSTSMaxAge < 0 {
 		return nil, fmt.Errorf(
 			"%w: a lifetime, attempt budget, session bound, or HSTS age is negative",
@@ -207,6 +220,10 @@ func NewRemote(cfg RemoteConfig) (*RemoteServer, error) {
 	if err != nil {
 		return nil, err
 	}
+	notice, err := loadPrivacyNotice()
+	if err != nil {
+		return nil, err
+	}
 	now := cfg.Now
 	if now == nil {
 		now = time.Now
@@ -214,6 +231,8 @@ func NewRemote(cfg RemoteConfig) (*RemoteServer, error) {
 	return &RemoteServer{
 		authorizations: cfg.Authorizations,
 		authenticator:  cfg.Authenticator,
+		privacy:        cfg.PrivacyConsents,
+		notice:         notice,
 		sessions:       newSessionRegistry(orInt(cfg.MaxSessions, DefaultMaxSessions)),
 		pages:          pages,
 		logger:         cfg.Logger,

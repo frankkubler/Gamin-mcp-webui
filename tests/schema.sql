@@ -112,3 +112,14 @@ CREATE TABLE audit_events (
     client_id    TEXT,
     detail       TEXT NOT NULL DEFAULT ''
 );
+
+CREATE TABLE privacy_notice_consents (
+    principal_id   TEXT NOT NULL REFERENCES principals (id) ON DELETE CASCADE,
+    notice_hash    TEXT NOT NULL,
+    notice_version TEXT NOT NULL,
+    accepted_at    TEXT NOT NULL,
+    PRIMARY KEY (principal_id, notice_hash)
+);
+
+CREATE INDEX idx_privacy_notice_consents_principal
+    ON privacy_notice_consents (principal_id, accepted_at);

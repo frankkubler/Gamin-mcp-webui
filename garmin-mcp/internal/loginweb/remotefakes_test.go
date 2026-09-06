@@ -123,6 +123,19 @@ func (f *fakeAuthorizations) AttachPrincipal(
 	return nil
 }
 
+func (f *fakeAuthorizations) Principal(
+	_ context.Context, capability string,
+) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	tx, err := f.live(capability)
+	if err != nil {
+		return "", err
+	}
+	return tx.principal, nil
+}
+
 func (f *fakeAuthorizations) Grant(
 	ctx context.Context, capability string,
 ) (loginweb.Completion, error) {
@@ -167,4 +180,82 @@ func (f *fakeAuthorizations) counts() (attaches, grants, denials int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.attaches, f.grants, f.denials
+}
+
+// fakePrivacyConsents is the privacy notice record under test control. It stores the
+// acceptances in memory, keyed exactly as the real store is: by principal and by the
+// digest of the text that was accepted.
+type fakePrivacyConsents struct {
+	mu       sync.Mutex
+	accepted map[string]time.Time
+	versions map[string]string
+	now      func() time.Time
+
+	readErr   error
+	acceptErr error
+
+	reads   int
+	records int
+}
+
+func newFakePrivacyConsents(now func() time.Time) *fakePrivacyConsents {
+	return &fakePrivacyConsents{
+		accepted: make(map[string]time.Time),
+		versions: make(map[string]string),
+		now:      now,
+	}
+}
+
+func (f *fakePrivacyConsents) key(principal, digest string) string {
+	return principal + "\x00" + digest
+}
+
+func (f *fakePrivacyConsents) AcceptedPrivacyNotice(
+	_ context.Context, principal, digest string,
+) (time.Time, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.reads++
+	if f.readErr != nil {
+		return time.Time{}, false, f.readErr
+	}
+	at, found := f.accepted[f.key(principal, digest)]
+	return at, found, nil
+}
+
+func (f *fakePrivacyConsents) AcceptPrivacyNotice(
+	_ context.Context, principal, digest, version string,
+) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	if f.acceptErr != nil {
+		return f.acceptErr
+	}
+	f.records++
+	key := f.key(principal, digest)
+	// Idempotent, like the store: the first acceptance is the one that happened.
+	if _, seen := f.accepted[key]; !seen {
+		f.accepted[key] = f.now()
+		f.versions[key] = version
+	}
+	return nil
+}
+
+// count reports how many acceptances were written, for a test that asserts a page
+// view or a denial recorded nothing.
+func (f *fakePrivacyConsents) count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.records
+}
+
+// accept pre-records an acceptance, for the tests that start from a person who has
+// already been asked.
+func (f *fakePrivacyConsents) accept(principal, digest, version string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.accepted[f.key(principal, digest)] = f.now()
+	f.versions[f.key(principal, digest)] = version
 }

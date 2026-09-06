@@ -79,7 +79,11 @@ func loadPages() (*pageSet, error) {
 // loadPageSet parses one profile's templates from dir. Each profile has its own
 // document and its own set of pages; the stylesheet is shared, because it is the
 // only asset and it carries no policy.
-func loadPageSet(dir string, names []string) (*pageSet, error) {
+//
+// partials are file names in the same directory that define blocks rather than
+// pages. Every page is parsed with all of them, so a page may include any block; a
+// partial is never rendered on its own, because render only knows page names.
+func loadPageSet(dir string, names []string, partials ...string) (*pageSet, error) {
 	stylesheet, err := assets.ReadFile("pages/style.css")
 	if err != nil {
 		return nil, fmt.Errorf("loginweb: reading the embedded stylesheet: %w", err)
@@ -90,8 +94,11 @@ func loadPageSet(dir string, names []string) (*pageSet, error) {
 		stylesheet: stylesheet,
 	}
 	for _, name := range names {
-		parsed, err := template.New("base.html").ParseFS(assets,
-			dir+"/base.html", dir+"/"+name+".html")
+		files := []string{dir + "/base.html", dir + "/" + name + ".html"}
+		for _, partial := range partials {
+			files = append(files, dir+"/"+partial)
+		}
+		parsed, err := template.New("base.html").ParseFS(assets, files...)
 		if err != nil {
 			return nil, fmt.Errorf("loginweb: parsing the %s page: %w", name, err)
 		}

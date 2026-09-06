@@ -32,6 +32,7 @@ SORTABLE_FIELDS = {
     "email": "email",
     "status": "status",
     "clients_authorized": "clients_authorized",
+    "privacy_accepted_at": "privacy_accepted_at",
 }
 
 
@@ -154,6 +155,9 @@ def _register_routes(app: FastAPI) -> None:
             "", alias="status", description="Filtre sur l'état dérivé."
         ),
         linked: Literal["", "oui", "non"] = Query("", description="Compte lié à Garmin."),
+        consent: Literal["", "oui", "non"] = Query(
+            "", description="Notice de confidentialité acceptée."
+        ),
         sort: str = Query("last_seen_at", description="Champ de tri."),
         order: Literal["asc", "desc"] = Query("desc"),
         limit: int = Query(100, ge=1, le=1000),
@@ -167,7 +171,7 @@ def _register_routes(app: FastAPI) -> None:
                 detail=f"Tri inconnu : {sort}. Valeurs acceptées : {sorted(SORTABLE_FIELDS)}.",
             )
 
-        items = _filter(_accounts(request), search, status_filter, linked)
+        items = _filter(_accounts(request), search, status_filter, linked, consent)
         items = _sort(items, sort, order)
         return {
             "total": len(items),
@@ -184,10 +188,11 @@ def _register_routes(app: FastAPI) -> None:
             "", alias="status"
         ),
         linked: Literal["", "oui", "non"] = Query(""),
+        consent: Literal["", "oui", "non"] = Query(""),
     ) -> StreamingResponse:
         """Export CSV de la même liste, pour un rapport ou un tableur."""
 
-        items = _filter(_accounts(request), search, status_filter, linked)
+        items = _filter(_accounts(request), search, status_filter, linked, consent)
         columns = [
             "id",
             "email",
@@ -198,6 +203,9 @@ def _register_routes(app: FastAPI) -> None:
             "status",
             "clients_authorized",
             "token_families_active",
+            "privacy_consent",
+            "privacy_accepted_at",
+            "privacy_notice_version",
         ]
         buffer = io.StringIO()
         writer = csv.DictWriter(buffer, fieldnames=columns, extrasaction="ignore")
@@ -244,7 +252,11 @@ def _csv_value(value: Any) -> str:
 
 
 def _filter(
-    accounts: list[dict[str, Any]], search: str, status_filter: str, linked: str
+    accounts: list[dict[str, Any]],
+    search: str,
+    status_filter: str,
+    linked: str,
+    consent: str = "",
 ) -> list[dict[str, Any]]:
     needle = search.strip().lower()
     result = accounts
@@ -260,6 +272,9 @@ def _filter(
     if linked:
         wanted = linked == "oui"
         result = [account for account in result if bool(account["garmin_linked"]) is wanted]
+    if consent:
+        accepted = consent == "oui"
+        result = [account for account in result if bool(account["privacy_consent"]) is accepted]
     return result
 
 

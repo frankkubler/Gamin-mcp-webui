@@ -32,6 +32,11 @@ type remotePageData struct {
 	// where the answer goes, and for what.
 	Client Disclosure
 
+	// Privacy is what the consent page says about the privacy notice: its label,
+	// whether this person still has to accept it, and the date they accepted it
+	// before. It carries no account data.
+	Privacy privacyState
+
 	// The field bounds, so the form advertises the limits the server enforces.
 	MaxEmailLen    int
 	MaxPasswordLen int
@@ -55,7 +60,9 @@ func newRemotePageData(disclosure Disclosure, token, message string) remotePageD
 // where the answer goes, and one shared document would make it easy to show the
 // wrong statement on the wrong profile.
 func loadRemotePages() (*pageSet, error) {
+	// privacy.html is a partial rather than a page: it defines the two notice
+	// blocks the consent page includes, and is never served on its own.
 	return loadPageSet("pages/remote", []string{
 		pageDisclosure, pageCredentials, pageMFA, pageConsent, pageNotFound, pageExpired,
-	})
+	}, "privacy.html")
 }

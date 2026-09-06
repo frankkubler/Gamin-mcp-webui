@@ -58,6 +58,7 @@ def database_path(tmp_path: Path) -> Path:
         "INSERT INTO garmin_token_sets VALUES ('p-active', 1, 4, 1, X'00', ?)", (ago(hours=2),)
     )
     _consent(connection, "p-active", "desktop", ago(days=60))
+    _privacy(connection, "p-active", "hash-v2", "2026-09-06", ago(days=60))
     _family(connection, "f-active", "p-active", "desktop", ago(days=60))
     _token(connection, "t-active-1", "f-active", "access", ago(days=30))
     _token(connection, "t-active-2", "f-active", "refresh", ago(hours=6))
@@ -70,6 +71,9 @@ def database_path(tmp_path: Path) -> Path:
     # 2. Compte inactif : dernier jeton MCP il y a douze jours.
     _principal(connection, "p-idle", "bob@exemple.fr", ago(days=200), ago(days=200), linked=True)
     _consent(connection, "p-idle", "cli", ago(days=200))
+    # Ce compte a vu deux versions successives de la notice.
+    _privacy(connection, "p-idle", "hash-v1", "2026-01-01", ago(days=200))
+    _privacy(connection, "p-idle", "hash-v2", "2026-09-06", ago(days=30))
     _family(connection, "f-idle", "p-idle", "cli", ago(days=200))
     _token(connection, "t-idle", "f-idle", "access", ago(days=12))
 
@@ -105,6 +109,19 @@ def _principal(
             created,
             updated,
         ),
+    )
+
+
+def _privacy(
+    connection: sqlite3.Connection,
+    principal_id: str,
+    notice_hash: str,
+    version: str,
+    accepted: str,
+) -> None:
+    connection.execute(
+        "INSERT INTO privacy_notice_consents VALUES (?, ?, ?, ?)",
+        (principal_id, notice_hash, version, accepted),
     )
 
 

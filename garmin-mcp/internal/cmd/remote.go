@@ -314,10 +314,16 @@ func newRemoteLoginServer(
 		return nil, err
 	}
 
+	consents, err := newPrivacyConsents(parts.sqlite)
+	if err != nil {
+		return nil, err
+	}
+
 	login, err := loginweb.NewRemote(loginweb.RemoteConfig{
-		Authorizations: grants,
-		Authenticator:  logins,
-		Logger:         deps.events,
+		Authorizations:  grants,
+		Authenticator:   logins,
+		PrivacyConsents: consents,
+		Logger:          deps.events,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("building the browser login server: %w", err)

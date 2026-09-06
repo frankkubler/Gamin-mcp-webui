@@ -89,6 +89,35 @@ def test_filtre_par_liaison_garmin(client: TestClient) -> None:
     assert [item["id"] for item in payload["items"]] == ["p-new"]
 
 
+def test_filtre_par_consentement(client: TestClient) -> None:
+    sans = client.get("/api/accounts?consent=non", headers=AUTH).json()
+    assert {item["id"] for item in sans["items"]} == {"p-dormant", "p-new"}
+
+    avec = client.get("/api/accounts?consent=oui", headers=AUTH).json()
+    assert {item["id"] for item in avec["items"]} == {"p-active", "p-idle"}
+
+
+def test_le_consentement_est_expose(client: TestClient) -> None:
+    payload = client.get("/api/accounts?search=alice", headers=AUTH).json()
+    account = payload["items"][0]
+    assert account["privacy_consent"] is True
+    assert account["privacy_notice_version"] == "2026-09-06"
+
+    detail = client.get("/api/accounts/p-idle", headers=AUTH).json()
+    assert [row["notice_version"] for row in detail["privacy_notice_consents"]] == [
+        "2026-09-06",
+        "2026-01-01",
+    ]
+
+
+def test_le_csv_porte_le_consentement(client: TestClient) -> None:
+    lignes = client.get("/api/accounts.csv", headers=AUTH).text.strip().splitlines()
+    assert "privacy_accepted_at" in lignes[0]
+    assert lignes[1].endswith("oui,2026-07-08T12:00:00Z,2026-09-06")
+    # Le compte jamais connecte n'a rien accepte : les colonnes restent vides.
+    assert lignes[-1].endswith("non,,")
+
+
 def test_tri_et_pagination(client: TestClient) -> None:
     payload = client.get("/api/accounts?sort=email&order=asc&limit=2", headers=AUTH).json()
     assert [item["email"] for item in payload["items"]] == ["alice@exemple.fr", "bob@exemple.fr"]
@@ -113,6 +142,8 @@ def test_tri_inconnu_refuse(client: TestClient) -> None:
 def test_statistiques(client: TestClient) -> None:
     stats = client.get("/api/stats", headers=AUTH).json()
     assert stats["accounts_total"] == 4
+    assert stats["privacy_consent"] == 2
+    assert stats["privacy_consent_missing"] == 2
     assert stats["garmin_linked"] == 3
     assert stats["by_status"]["jamais_connecte"] == 1
 

@@ -24,12 +24,22 @@ const (
 	fieldPassword = "password"
 	fieldCode     = "code"
 	fieldDecision = "decision"
+	// fieldPrivacy carries the acceptance of the privacy notice. A checkbox is
+	// absent from the submission when it is not ticked, so an unaccepted notice
+	// looks exactly like a form that never had the box: both are refused.
+	fieldPrivacy = "privacy_accepted"
 
 	decisionAllow = "allow"
+	// privacyAccepted is the only value the acceptance box may carry.
+	privacyAccepted = "yes"
 
 	// maxDecisionLen bounds the consent field, which is one short word.
 	maxDecisionLen = 16
 )
+
+// msgPrivacyRequired is shown when the notice was not accepted. It states what to do
+// rather than blaming the reader, and quotes nothing that was submitted.
+const msgPrivacyRequired = "Accept the privacy notice below to grant access, or choose Deny."
 
 // Handler returns the router for this deployment.
 //

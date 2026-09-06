@@ -103,7 +103,8 @@ function renderTiles(stats) {
     ["Liés à Garmin", stats.garmin_linked],
     [`Actifs (≤ ${stats.thresholds.active_days} j)`, stats.by_status.actif],
     ["Vus sous 24 h", stats.seen_last_24_hours],
-    ["Créés sous 7 j", stats.created_last_7_days],
+    ["Notice acceptée", stats.privacy_consent],
+    ["Sans consentement", stats.privacy_consent_missing],
     ["Jamais connectés", stats.by_status.jamais_connecte],
   ];
   const container = el("tiles");
@@ -131,7 +132,7 @@ function renderRows(accounts) {
     const row = document.createElement("tr");
     row.className = "empty";
     const td = document.createElement("td");
-    td.colSpan = 6;
+    td.colSpan = 7;
     td.textContent = "Aucun compte ne correspond aux filtres.";
     row.appendChild(td);
     body.appendChild(row);
@@ -176,6 +177,21 @@ function renderRows(accounts) {
 
     cell(row, account.last_seen_label || "—", "secondary");
 
+    const consent = document.createElement("td");
+    if (account.privacy_accepted_at) {
+      consent.appendChild(document.createTextNode(absolute(account.privacy_accepted_at)));
+      const version = document.createElement("div");
+      version.className = "secondary";
+      version.textContent = `version ${account.privacy_notice_version || "?"}`;
+      consent.appendChild(version);
+    } else {
+      const none = document.createElement("span");
+      none.className = "badge badge--dormant";
+      none.textContent = "Aucun";
+      consent.appendChild(none);
+    }
+    row.appendChild(consent);
+
     const clients = document.createElement("td");
     const plural = (count, word) => `${count} ${word}${count > 1 ? "s" : ""}`;
     clients.appendChild(document.createTextNode(plural(account.clients_authorized, "client")));
@@ -186,6 +202,7 @@ function renderRows(accounts) {
     }`;
     clients.appendChild(families);
     row.appendChild(clients);
+
 
     row.addEventListener("click", () => openDetail(account.id));
     row.addEventListener("keydown", (event) => {
@@ -266,6 +283,22 @@ async function openDetail(id) {
     ),
   );
 
+  const privacy = document.createElement("h3");
+  privacy.textContent = "Notice de confidentialité";
+  body.append(
+    privacy,
+    table(
+      ["Version", "Acceptée le", "Empreinte du texte"],
+      (account.privacy_notice_consents || []).map((acceptance) => [
+        acceptance.notice_version,
+        absolute(acceptance.accepted_at),
+        // L'empreinte identifie le texte accepté ; les douze premiers caractères
+        // suffisent à distinguer deux versions à l'œil.
+        `${(acceptance.notice_hash || "").slice(0, 12)}…`,
+      ]),
+    ),
+  );
+
   const consents = document.createElement("h3");
   consents.textContent = "Clients autorisés";
   body.append(
@@ -323,6 +356,7 @@ function queryString() {
   if (search) params.set("search", search);
   if (el("status").value) params.set("status", el("status").value);
   if (el("linked").value) params.set("linked", el("linked").value);
+  if (el("consent").value) params.set("consent", el("consent").value);
   params.set("sort", state.sort);
   params.set("order", state.order);
   params.set("limit", "1000");
@@ -376,6 +410,7 @@ function bind() {
   });
   el("status").addEventListener("change", load);
   el("linked").addEventListener("change", load);
+  el("consent").addEventListener("change", load);
 
   for (const button of document.querySelectorAll("thead button[data-sort]")) {
     button.addEventListener("click", () => {

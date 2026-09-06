@@ -182,3 +182,37 @@ def test_repli_sur_instantane_quand_la_lecture_directe_echoue(
     assert calls[0] == database_path and calls[1] != database_path
     assert database.info().access_mode == "snapshot"
     database.close()
+
+
+def test_consentement_a_la_notice(accounts: list[dict[str, object]]) -> None:
+    active = by_id(accounts, "p-active")
+    assert active["privacy_consent"] is True
+    assert active["privacy_notice_version"] == "2026-09-06"
+    assert active["privacy_acceptances"] == 1
+
+    # Deux versions acceptees : la plus recente est celle qui remonte.
+    idle = by_id(accounts, "p-idle")
+    assert idle["privacy_acceptances"] == 2
+    assert idle["privacy_notice_version"] == "2026-09-06"
+    assert idle["privacy_accepted_at"] == "2026-08-07T12:00:00Z"
+
+
+def test_compte_sans_consentement(accounts: list[dict[str, object]]) -> None:
+    fresh = by_id(accounts, "p-new")
+    assert fresh["privacy_consent"] is False
+    assert fresh["privacy_accepted_at"] is None
+    assert fresh["privacy_notice_version"] is None
+
+
+def test_detail_liste_les_acceptations(database_path: Path, now: datetime) -> None:
+    with Database(database_path).connect() as connection:
+        detail = queries.get_account(connection, "p-idle", now=now)
+    assert detail is not None
+    acceptations = detail["privacy_notice_consents"]
+    assert [row["notice_version"] for row in acceptations] == ["2026-09-06", "2026-01-01"]
+
+
+def test_agregat_du_consentement(accounts: list[dict[str, object]], now: datetime) -> None:
+    stats = queries.summarize(accounts, now=now)
+    assert stats["privacy_consent"] == 2
+    assert stats["privacy_consent_missing"] == 2

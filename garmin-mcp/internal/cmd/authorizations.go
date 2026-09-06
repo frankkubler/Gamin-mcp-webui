@@ -115,6 +115,19 @@ func (a *authorizations) AttachPrincipal(ctx context.Context, capability, princi
 	return nil
 }
 
+// Principal reports the principal a transaction is bound to.
+//
+// It is empty until the Garmin login has resolved one, which is a state and not a
+// failure: the page layer asks before the login on no path, but a transaction that
+// was abandoned mid-flow answers honestly rather than inventing an account.
+func (a *authorizations) Principal(ctx context.Context, capability string) (string, error) {
+	tx, err := a.server.Transaction(ctx, oauthserver.SecretFromString(capability))
+	if err != nil {
+		return "", translateTransactionError(err)
+	}
+	return tx.Principal.String(), nil
+}
+
 // Grant records consent and issues the authorization code, which makes the
 // transaction terminal.
 func (a *authorizations) Grant(ctx context.Context, capability string) (loginweb.Completion, error) {

@@ -115,9 +115,75 @@ func (s *RemoteServer) handleConsentForm(w http.ResponseWriter, r *http.Request)
 	// redirect to the client's origin is one of those hops, so the origin belongs
 	// here, on the GET response, not on the POST response the browser never
 	// consults for this check.
+	privacy, ok := s.privacyFor(w, r, session)
+	if !ok {
+		return
+	}
 	setOutboundRedirectCSP(w, disclosure.RedirectURI)
 	s.pages.render(w, http.StatusOK, pageConsent,
-		newRemotePageData(disclosure, session.formToken(), ""))
+		s.consentData(session, disclosure, privacy, ""))
+}
+
+// privacyFor resolves what the consent page must say about the notice, answering the
+// request itself when it cannot.
+//
+// A store that cannot be read is a 503 rather than a page: neither answer it could
+// stand in for is safe. "Already accepted" would let someone through who never
+// consented, and "not accepted yet" would ask for an acceptance the same broken
+// store cannot record.
+func (s *RemoteServer) privacyFor(
+	w http.ResponseWriter, r *http.Request, session *remoteSession,
+) (privacyState, bool) {
+	principal, err := s.authorizations.Principal(r.Context(), session.capability)
+	if err != nil {
+		s.refuseSession(w, session, err)
+		return privacyState{}, false
+	}
+	if principal == "" {
+		// The state machine says the login is complete, so a transaction with no
+		// principal is an inconsistency rather than a user error.
+		s.notFound(w)
+		return privacyState{}, false
+	}
+	state, err := s.privacyStateFor(r.Context(), principal)
+	if err != nil {
+		s.unavailable(w)
+		return privacyState{}, false
+	}
+	return state, true
+}
+
+// consentData is the consent page's data: the disclosure, the form token, what the
+// page says about the notice, and any message.
+func (s *RemoteServer) consentData(
+	session *remoteSession, disclosure Disclosure, privacy privacyState, message string,
+) remotePageData {
+	data := newRemotePageData(disclosure, session.formToken(), message)
+	data.Privacy = privacy
+	return data
+}
+
+// retryConsent re-renders the consent page after a submission that granted nothing.
+//
+// The session is still live and its form token has been rotated by the confirm that
+// let this submission in, so the re-rendered form carries the new token. The redirect
+// policy is set again because this document contains the Allow form, exactly as it
+// does on the first render.
+func (s *RemoteServer) retryConsent(
+	w http.ResponseWriter, r *http.Request, session *remoteSession, message string,
+) {
+	disclosure, err := s.authorizations.Disclose(r.Context(), session.capability)
+	if err != nil {
+		s.refuseSession(w, session, err)
+		return
+	}
+	privacy, ok := s.privacyFor(w, r, session)
+	if !ok {
+		return
+	}
+	setOutboundRedirectCSP(w, disclosure.RedirectURI)
+	s.pages.render(w, http.StatusBadRequest, pageConsent,
+		s.consentData(session, disclosure, privacy, sanitizedMessage(message)))
 }
 
 // handleConsentSubmit ends the transaction.
@@ -148,6 +214,13 @@ func (s *RemoteServer) handleConsentSubmit(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// The notice gates the grant only. A denial needs no acceptance: refusing the
+	// notice and refusing the client must both be possible without accepting
+	// anything, and both end the transaction with nothing granted.
+	if decision == decisionAllow && !s.recordPrivacyConsent(w, r, session) {
+		return
+	}
+
 	s.discard(session)
 	s.clearCookie(w)
 
@@ -160,6 +233,45 @@ func (s *RemoteServer) handleConsentSubmit(w http.ResponseWriter, r *http.Reques
 	// No CSP header is set here: this response's own headers are never consulted
 	// for the form-action check on the redirect it issues. See handleConsentForm.
 	http.Redirect(w, r, completion.RedirectTo, http.StatusSeeOther)
+}
+
+// recordPrivacyConsent enforces the notice and records the acceptance, reporting
+// whether the grant may proceed.
+//
+// The acceptance is written before the authorization server is asked to grant
+// anything, so a store that cannot record it refuses the grant rather than issuing
+// a token whose consent was never persisted. It answers the request itself on every
+// path that stops the grant, and leaves the session live when the person can still
+// fix what stopped it.
+func (s *RemoteServer) recordPrivacyConsent(
+	w http.ResponseWriter, r *http.Request, session *remoteSession,
+) bool {
+	state, ok := s.privacyFor(w, r, session)
+	if !ok {
+		return false
+	}
+	if !state.Required {
+		return true
+	}
+	// A checkbox that was not ticked is absent, so this compares against the one
+	// value the form may send rather than testing for presence.
+	if r.PostFormValue(fieldPrivacy) != privacyAccepted {
+		s.retryConsent(w, r, session, msgPrivacyRequired)
+		return false
+	}
+
+	principal, err := s.authorizations.Principal(r.Context(), session.capability)
+	if err != nil || principal == "" {
+		s.abandon(w, session)
+		return false
+	}
+	if err := s.privacy.AcceptPrivacyNotice(
+		r.Context(), principal, s.notice.digest, s.notice.version); err != nil {
+		s.unavailable(w)
+		return false
+	}
+	s.log(r.Context(), "the privacy notice was accepted")
+	return true
 }
 
 // decide grants or denies. A denial persists nothing at all.

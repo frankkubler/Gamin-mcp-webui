@@ -40,8 +40,10 @@ const (
 	pathStylesheet  = "/login/style.css"
 
 	fieldDecision = "decision"
+	fieldPrivacy  = "privacy_accepted"
 	decisionAllow = "allow"
 	decisionDeny  = "deny"
+	privacyYes    = "yes"
 )
 
 // clientName is the operator-registered display name the disclosure names.
@@ -63,12 +65,13 @@ func authorizeQuery(clientID string) url.Values {
 
 // remoteHarness is one remote profile under test, with its browser.
 type remoteHarness struct {
-	t      *testing.T
-	authz  *fakeAuthorizations
-	garmin *fakeAuthenticator
-	clock  *testkit.FakeClock
-	server *loginweb.RemoteServer
-	b      *browser
+	t       *testing.T
+	authz   *fakeAuthorizations
+	garmin  *fakeAuthenticator
+	privacy *fakePrivacyConsents
+	clock   *testkit.FakeClock
+	server  *loginweb.RemoteServer
+	b       *browser
 }
 
 func newRemote(t *testing.T, garmin *fakeAuthenticator) *remoteHarness {
@@ -76,16 +79,18 @@ func newRemote(t *testing.T, garmin *fakeAuthenticator) *remoteHarness {
 
 	clock := testkit.NewFakeClock(time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC))
 	authz := newFakeAuthorizations(clock.Now)
+	privacy := newFakePrivacyConsents(clock.Now)
 	server, err := loginweb.NewRemote(loginweb.RemoteConfig{
-		Authorizations: authz,
-		Authenticator:  garmin,
-		Now:            clock.Now,
+		Authorizations:  authz,
+		Authenticator:   garmin,
+		PrivacyConsents: privacy,
+		Now:             clock.Now,
 	})
 	if err != nil {
 		t.Fatalf("loginweb.NewRemote returned error: %v", err)
 	}
 	return &remoteHarness{
-		t: t, authz: authz, garmin: garmin, clock: clock, server: server,
+		t: t, authz: authz, garmin: garmin, privacy: privacy, clock: clock, server: server,
 		b: newBrowser(t, server.Handler()),
 	}
 }
@@ -130,15 +135,28 @@ func (h *remoteHarness) reachConsent() string {
 	return page
 }
 
-// decide posts the consent decision.
+// decide posts the consent decision with the privacy notice accepted, which is what
+// a person who ticks the box and clicks the button sends.
 func (h *remoteHarness) decide(page, decision string) *http.Response {
 	h.t.Helper()
 
 	resp, _ := h.b.post(pathConsent, url.Values{
 		fieldCSRF:     {csrfToken(h.t, page)},
 		fieldDecision: {decision},
+		fieldPrivacy:  {privacyYes},
 	})
 	return resp
+}
+
+// decideWithoutAccepting posts a decision from a form whose acceptance box was left
+// unticked. A browser omits the field entirely, which is what this sends.
+func (h *remoteHarness) decideWithoutAccepting(page, decision string) (*http.Response, string) {
+	h.t.Helper()
+
+	return h.b.post(pathConsent, url.Values{
+		fieldCSRF:     {csrfToken(h.t, page)},
+		fieldDecision: {decision},
+	})
 }
 
 func wantStatus(t *testing.T, resp *http.Response, want int, what string) {

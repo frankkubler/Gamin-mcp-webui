@@ -35,3 +35,36 @@ button, .button {
 .notice { font-size: 0.85rem; opacity: 0.8; }
 
 footer { margin-top: 2rem; }
+
+/* The privacy notice on the consent page: a summary that is always visible, and the
+   full text behind a disclosure. The full text is bounded and scrolls, so a long
+   notice cannot push the Allow and Deny buttons off the first screen. */
+.privacy {
+  margin: 1.5rem 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid currentColor;
+}
+
+.privacy h2 { margin-top: 0; font-size: 1rem; }
+
+.privacy-summary { margin: 0; padding-left: 1.2rem; }
+
+.privacy-summary li { margin: 0.35rem 0; }
+
+.privacy-details { margin-top: 0.75rem; }
+
+.privacy-details summary { cursor: pointer; }
+
+.privacy-full {
+  max-height: 22rem;
+  overflow-y: auto;
+  margin-top: 0.5rem;
+  padding-right: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.privacy-full h3 { font-size: 0.95rem; margin: 1rem 0 0.35rem; }
+
+.privacy-version { font-size: 0.8rem; opacity: 0.8; margin-bottom: 0; }
+
+.privacy-accept label { display: flex; gap: 0.5rem; align-items: flex-start; }

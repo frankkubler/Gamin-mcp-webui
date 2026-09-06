@@ -59,6 +59,14 @@
           <option value="non">Non lié</option>
         </select>
       </label>
+      <label class="field">
+        <span>Notice acceptée</span>
+        <select id="consent">
+          <option value="">Tous</option>
+          <option value="oui">Acceptée</option>
+          <option value="non">Sans consentement</option>
+        </select>
+      </label>
       <p class="filters__count" id="result-count"></p>
     </section>
 
@@ -79,13 +87,16 @@
             </th>
             <th scope="col">Signal retenu</th>
             <th scope="col">
+              <button type="button" data-sort="privacy_accepted_at">Notice acceptée</button>
+            </th>
+            <th scope="col">
               <button type="button" data-sort="clients_authorized">Clients</button>
             </th>
           </tr>
         </thead>
         <tbody id="rows">
           <tr class="empty">
-            <td colspan="6">Chargement…</td>
+            <td colspan="7">Chargement…</td>
           </tr>
         </tbody>
       </table>

@@ -40,9 +40,11 @@ s'arrête, pour que la politique de redémarrage de Docker s'applique à l'ensem
 | Dernière connexion   | dérivée (voir ci-dessous). |
 | Signal retenu        | le fait horodaté qui porte la date affichée. |
 | Clients / familles   | `consents` non révoqués et `token_families` actives. |
+| Notice acceptée      | dernière ligne de `privacy_notice_consents` (voir plus bas). |
 
-Le détail d'un compte ajoute la liste complète des signaux, les clients OAuth autorisés avec
-leurs portées, les familles de jetons et, si la table est alimentée, les événements d'audit.
+Le détail d'un compte ajoute la liste complète des signaux, ses acceptations de la notice de
+confidentialité, les clients OAuth autorisés avec leurs portées, les familles de jetons et, si la
+table est alimentée, les événements d'audit.
 
 ## Comment la « dernière connexion » est calculée
 
@@ -77,6 +79,65 @@ Un compte dont aucun signal ne dépasse sa date de création est classé **jamai
 - **Identité Garmin.** Le nom Garmin du compte est chiffré dans la base (`garmin_identity_sealed`)
   et n'est déchiffrable qu'avec la clé maître du serveur. L'interface ne la demande pas et
   n'affiche donc que l'e-mail.
+
+## Le consentement de l'utilisateur
+
+Ce dépôt ajoute au serveur amont une **fenêtre de consentement** : la page qui conclut
+le login dans le navigateur — celle qui porte *Allow* et *Deny* — affiche désormais ce
+que le déploiement enregistre et ce qu'il n'enregistre pas, et l'acceptation est
+enregistrée en base.
+
+![La page de consentement, notice dépliée](docs/consentement.png)
+
+- **Un résumé toujours visible** : ce qui est enregistré, ce qui ne l'est jamais, ce que
+  reçoit le client MCP, et comment arrêter le traitement.
+- **Le texte intégral à la demande**, dans un dépliant sur la même page — aucun second
+  chargement, donc rien qui puisse échouer entre la lecture et l'acceptation.
+- **Une case à cocher que le serveur vérifie.** Accorder sans cocher est refusé côté
+  serveur, pas seulement par le navigateur : la page revient, la session reste vivante,
+  rien n'a été accordé. Refuser (*Deny*), en revanche, n'exige aucune acceptation.
+- **On ne redemande pas.** Qui a déjà accepté le texte servi voit la date de son
+  acceptation à la place de la case.
+
+### Ce qui est enregistré, et pourquoi c'est l'empreinte qui compte
+
+Une ligne par compte et par texte accepté, dans la table `privacy_notice_consents`
+(migration `0003` du serveur) : l'identifiant interne du compte, **l'empreinte SHA-256
+du texte exact affiché**, le libellé de version que portait ce texte, et l'instant de la
+première acceptation.
+
+C'est l'empreinte, et non le libellé, qui décide si l'on redemande. Un libellé s'oublie
+au moment d'éditer le texte ; une empreinte non. Modifier la notice — un mot, un titre,
+ou sa traduction complète en français — change l'empreinte, ne correspond plus à aucune
+ligne, et fait donc réaccepter tout le monde, sans qu'aucune action d'exploitation ne
+soit nécessaire.
+
+Réaccepter le même texte garde le premier instant : c'est celui-là qui a eu lieu.
+Accepter un texte différent ajoute une ligne au lieu d'en remplacer une, donc l'historique
+de ce qui a été accepté survit.
+
+### Modifier le texte
+
+Il est dans `garmin-mcp/internal/loginweb/pages/remote/privacy.html`, en deux blocs
+(résumé et texte intégral). Il est en anglais, comme le reste des pages de login du
+serveur amont ; le traduire est une édition de ce seul fichier, et l'empreinte changeant,
+chacun le réacceptera. Pensez à remonter `PrivacyNoticeVersion` dans
+`garmin-mcp/internal/loginweb/privacy.go` pour que la ligne enregistrée porte aussi un
+libellé lisible. Le détail est dans
+[garmin-mcp/docs/privacy-notice.md](garmin-mcp/docs/privacy-notice.md).
+
+Le texte livré décrit ce que ce build fait réellement, vérifié contre le schéma. **Si
+vous changez ce que le serveur stocke, la notice fait partie du changement** — et c'est
+l'opérateur du déploiement qui reste responsable du traitement et de ce que la notice
+promet.
+
+### Côté interface
+
+L'interface montre, par compte, la date de la dernière acceptation et sa version, ou une
+pastille *Aucun* pour un compte qui n'a jamais accepté de notice — l'état normal d'un
+compte antérieur à la mise en place. Deux tuiles comptent les deux populations, un filtre
+isole les comptes sans consentement, le détail liste toutes les acceptations avec leur
+empreinte, et l'export CSV porte les mêmes colonnes.
 
 ## Sécurité
 
@@ -235,9 +296,9 @@ Toutes les routes `/api` sauf `/api/health` exigent une authentification.
 | `GET /api/health` | sonde publique : `{"status": "ok", "database_readable": true}`. |
 | `GET /api/status` | chemin, taille et mode d'accès de la base, seuils, libellés des signaux. |
 | `GET /api/stats` | compteurs agrégés (total, liés à Garmin, actifs, vus sous 24 h…). |
-| `GET /api/accounts` | liste paginée. Paramètres : `search`, `status`, `linked`, `sort`, `order`, `limit`, `offset`. |
+| `GET /api/accounts` | liste paginée. Paramètres : `search`, `status`, `linked`, `consent`, `sort`, `order`, `limit`, `offset`. |
 | `GET /api/accounts.csv` | même liste au format CSV, mêmes filtres. |
-| `GET /api/accounts/{id}` | détail d'un compte : signaux, consentements, familles de jetons, audit. |
+| `GET /api/accounts/{id}` | détail d'un compte : signaux, acceptations de la notice, consentements, familles de jetons, audit. |
 | `GET /api/docs` | documentation OpenAPI générée. |
 
 ```bash
@@ -284,10 +345,11 @@ l'interface.
 
 ## Compatibilité
 
-Vérifié contre le schéma de garmin-mcp après les migrations `0001_initial` et
-`0002_oauth_contract` (serveur `0.0.x`). L'interface ne dépend que des tables `principals`,
-`garmin_token_sets`, `consents`, `oauth_clients`, `auth_codes`, `token_families`, `mcp_tokens`
-et `audit_events`, et ne lit aucune colonne chiffrée.
+Vérifié contre le schéma de garmin-mcp après les migrations `0001_initial`,
+`0002_oauth_contract` et `0003_privacy_notice_consent` (cette dernière ajoutée par ce
+dépôt). L'interface ne dépend que des tables `principals`, `garmin_token_sets`,
+`consents`, `oauth_clients`, `auth_codes`, `token_families`, `mcp_tokens`,
+`audit_events` et `privacy_notice_consents`, et ne lit aucune colonne chiffrée.
 
 ## Licence
 

@@ -93,6 +93,20 @@ def build(path: Path, seed: int = 7) -> None:
         if last_activity is None:
             continue
 
+        # La notice de confidentialite : la plupart des comptes l'ont acceptee, et
+        # un compte sur quatre est anterieur a sa mise en place, ce qui est l'etat
+        # qu'un operateur doit pouvoir reperer dans l'interface.
+        if index % 4 != 1:
+            connection.execute(
+                "INSERT INTO privacy_notice_consents VALUES (?, ?, ?, ?)",
+                (
+                    principal_id,
+                    f"{index:064d}",
+                    "2026-09-06",
+                    iso(created + timedelta(minutes=4)),
+                ),
+            )
+
         client_id = clients[index % len(clients)][0]
         connection.execute(
             "INSERT INTO consents VALUES"

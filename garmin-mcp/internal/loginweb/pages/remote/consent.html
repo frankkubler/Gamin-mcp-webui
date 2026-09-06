@@ -14,12 +14,36 @@ your Garmin tokens.</p>
 <dt>Access granted</dt>
 <dd><ul>{{range .Client.Scopes}}<li><code>{{.}}</code></li>{{end}}</ul></dd>
 </dl>
+
+<section class="privacy" aria-labelledby="privacy-heading">
+<h2 id="privacy-heading">What this deployment records about you</h2>
+{{template "privacy_summary" .}}
+<details class="privacy-details">
+<summary>Read the notice in full</summary>
+{{template "privacy_full" .}}
+</details>
+<p class="privacy-version">Notice version {{.Privacy.Version}}.</p>
+</section>
+
 <form method="post" action="/login/consent">
 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+{{if .Privacy.Required}}
+<p class="privacy-accept">
+<label>
+<input type="checkbox" name="privacy_accepted" value="yes">
+I have read the notice above and accept that this deployment records what it
+describes.
+</label>
+</p>
+{{else}}
+<p class="notice">You accepted this notice on {{.Privacy.AcceptedOn}}. It has not
+changed since.</p>
+{{end}}
 <p>
 <button type="submit" name="decision" value="allow">Allow</button>
 <button type="submit" name="decision" value="deny">Deny</button>
 </p>
 </form>
-<p class="notice">Denying discards the Garmin sign-in this page is holding.</p>
+<p class="notice">Denying discards the Garmin sign-in this page is holding. Denying
+records no acceptance.</p>
 {{end}}

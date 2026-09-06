@@ -31,6 +31,12 @@ jetons et les codes expires. Un compte inactif depuis longtemps peut donc voir
 sa « derniere connexion » retomber sur un signal plus ancien mais persistant
 (consentement, jetons Garmin). Les consentements, eux, ne sont jamais supprimes.
 
+Le consentement a la notice de confidentialite est lu dans la table
+``privacy_notice_consents``, ajoutee par la migration 0003 du serveur : une ligne par
+compte et par texte accepte, avec l'empreinte de ce texte, son libelle de version et
+l'instant de l'acceptation. Un compte sans ligne n'a jamais accepte de notice, ce qui
+est l'etat normal d'un compte anterieur a sa mise en place.
+
 Aucune colonne sensible ne sort d'ici : ni empreinte (``*_hash``), ni enveloppe
 chiffree (``*_sealed``). Seul l'e-mail, que garmin-mcp stocke en clair comme
 identifiant de connexion, est expose — et masquable via WEBUI_MASK_EMAILS.
@@ -95,7 +101,18 @@ SELECT
     (SELECT COUNT(DISTINCT c.client_id)
        FROM consents c
       WHERE c.principal_id = p.id
-        AND c.revoked_at IS NULL)               AS clients_authorized
+        AND c.revoked_at IS NULL)               AS clients_authorized,
+    (SELECT MAX(n.accepted_at)
+       FROM privacy_notice_consents n
+      WHERE n.principal_id = p.id)              AS privacy_accepted_at,
+    (SELECT n.notice_version
+       FROM privacy_notice_consents n
+      WHERE n.principal_id = p.id
+      ORDER BY n.accepted_at DESC, n.notice_hash
+      LIMIT 1)                                  AS privacy_notice_version,
+    (SELECT COUNT(*)
+       FROM privacy_notice_consents n
+      WHERE n.principal_id = p.id)              AS privacy_acceptances
 FROM principals p
 ORDER BY p.created_at DESC, p.id
 """
@@ -136,6 +153,16 @@ FROM token_families f
 LEFT JOIN oauth_clients o ON o.id = f.client_id
 WHERE f.principal_id = ?
 ORDER BY f.created_at DESC
+"""
+
+_PRIVACY_SQL = """
+SELECT
+    n.notice_version AS notice_version,
+    n.notice_hash    AS notice_hash,
+    n.accepted_at    AS accepted_at
+FROM privacy_notice_consents n
+WHERE n.principal_id = ?
+ORDER BY n.accepted_at DESC, n.notice_hash
 """
 
 _AUDIT_SQL = """
@@ -266,6 +293,12 @@ def list_accounts(
             "last_seen_days_ago": _days_between(last_seen, moment),
             "status": classify(last_seen, moment, active_days, idle_days),
             "clients_authorized": int(row["clients_authorized"]),
+            "privacy_accepted_at": _iso(
+                parse_timestamp(row.get("privacy_accepted_at"))  # type: ignore[arg-type]
+            ),
+            "privacy_notice_version": row.get("privacy_notice_version"),
+            "privacy_acceptances": int(row["privacy_acceptances"]),
+            "privacy_consent": bool(row["privacy_acceptances"]),
             "token_families_active": int(row["token_families_active"]),
             "token_families_total": int(row["token_families_total"]),
             "signals": {
@@ -317,6 +350,9 @@ def get_account(
 
     account = dict(account)
     account["consents"] = [dict(row) for row in connection.execute(_CONSENTS_SQL, (principal_id,))]
+    account["privacy_notice_consents"] = [
+        dict(row) for row in connection.execute(_PRIVACY_SQL, (principal_id,))
+    ]
     account["token_families"] = [
         dict(row) for row in connection.execute(_FAMILIES_SQL, (principal_id,))
     ]
@@ -338,6 +374,7 @@ def summarize(
     moment = now or datetime.now(UTC)
     counters = {"actif": 0, "inactif": 0, "dormant": 0, "jamais_connecte": 0}
     linked = 0
+    consented = 0
     created_7d = 0
     created_30d = 0
     seen_24h = 0
@@ -348,6 +385,8 @@ def summarize(
         counters[str(account["status"])] += 1
         if account["garmin_linked"]:
             linked += 1
+        if account.get("privacy_consent"):
+            consented += 1
 
         created_age = account.get("created_days_ago")
         if isinstance(created_age, (int, float)):
@@ -371,6 +410,8 @@ def summarize(
         "generated_at": _iso(moment),
         "accounts_total": len(accounts),
         "garmin_linked": linked,
+        "privacy_consent": consented,
+        "privacy_consent_missing": len(accounts) - consented,
         "created_last_7_days": created_7d,
         "created_last_30_days": created_30d,
         "seen_last_24_hours": seen_24h,

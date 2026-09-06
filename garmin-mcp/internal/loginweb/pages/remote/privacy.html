@@ -1,0 +1,113 @@
+{{/*
+The privacy notice, in two parts: a summary that is always visible, and the full
+text behind a disclosure the reader opens if they want it.
+
+This file is the notice. Its bytes are digested at start-up and that digest is what
+an acceptance is recorded against, so editing anything here — a word, a heading, the
+whole text in another language — makes every account see the notice again and accept
+it afresh. Bump PrivacyNoticeVersion in privacy.go when you edit it, so the record
+carries a label a human can read as well as a digest a machine can compare.
+
+The text states what this build actually does. Check it against the code before
+changing it: the tables it names are in migrations/, and what is deliberately absent
+from them is the point of half these sentences.
+*/}}
+
+{{define "privacy_summary"}}
+<ul class="privacy-summary">
+<li><strong>Recorded:</strong> your e-mail address, an encrypted link to your Garmin
+account, your Garmin session tokens (encrypted), which clients you authorized and
+when, and the fact that you accepted this notice.</li>
+<li><strong>Never recorded:</strong> your Garmin password, and none of your health,
+activity, sleep, heart-rate or location data. Those are fetched from Garmin only
+while a request is running and are passed straight to the client that asked.</li>
+<li><strong>Never sent to the client:</strong> your Garmin password and your Garmin
+tokens. A client receives a token for this server only.</li>
+<li><strong>You can stop it:</strong> ask the operator to revoke a client's access or
+to unlink your Garmin account. Unlinking deletes the stored Garmin tokens.</li>
+</ul>
+{{end}}
+
+{{define "privacy_full"}}
+<div class="privacy-full">
+
+<h3>Who processes what</h3>
+<p>The operator of this deployment runs this server and holds its encryption key.
+They decide how long it runs and who may use it, and they are the people to contact
+about your data. This software does not send anything to its authors.</p>
+
+<h3>What is written to the database</h3>
+<dl>
+<dt>Your e-mail address</dt>
+<dd>In the clear. It is your login handle and the only human-readable identifier of
+your account. It is never used to isolate your data — that is done with a random
+internal identifier, so changing your e-mail moves nothing.</dd>
+
+<dt>A fingerprint of your Garmin account identifier</dt>
+<dd>A keyed digest, not the identifier itself. It exists so the same Garmin account
+cannot silently become two accounts here.</dd>
+
+<dt>Your Garmin account identifier and display name</dt>
+<dd>Encrypted, readable only with this deployment's key.</dd>
+
+<dt>Your Garmin session tokens</dt>
+<dd>Encrypted. They are what lets this server call Garmin on your behalf without
+asking for your password again. They are replaced whenever Garmin rotates them.</dd>
+
+<dt>Your authorizations</dt>
+<dd>Which client you allowed, for which address and which permissions, when you
+granted it and, if it happens, when it was revoked. A revocation is recorded rather
+than erased, so the trail of what was allowed survives.</dd>
+
+<dt>Digests of the access tokens issued to your clients</dt>
+<dd>The tokens themselves are never stored and cannot be recovered from what is.
+Their issue, expiry and rotation instants are stored, which is what lets a stolen
+token be detected and revoked.</dd>
+
+<dt>This acceptance</dt>
+<dd>A digest of the exact text you are reading, the label it carries, and the instant
+you accepted it. That is the record that you were shown this, and which version.</dd>
+</dl>
+
+<h3>What is never written to the database</h3>
+<ul>
+<li><strong>Your Garmin password.</strong> It is used once, to sign you in to Garmin,
+and is never stored, never logged, and never sent anywhere but Garmin.</li>
+<li><strong>Your health and activity data.</strong> No heart rate, sleep, weight,
+workout, training metric or GPS coordinate is stored here. The database has no column
+for any of it. When a client asks for such data, this server fetches it from Garmin
+and hands it to the client while the request runs; nothing is kept afterwards, on
+disk or in a cache.</li>
+<li><strong>Your IP address, your browser, your device.</strong> The database has no
+column for them. Your address is used while a request is in flight, to apply rate
+limits. Whatever the operator's own infrastructure records — a reverse proxy, a
+container log — is outside this software and is the operator's to describe.</li>
+<li><strong>What you ask your assistant.</strong> The content of your conversations
+with an MCP client never reaches this server.</li>
+</ul>
+
+<h3>What a client you authorize receives</h3>
+<p>An access token valid for this server alone, limited to the permissions shown on
+this page, and the data it then asks for. It never receives your Garmin password, your
+Garmin tokens, or access to anyone else's account. A token stops working when it
+expires, when you have its authorization revoked, or when this server detects that an
+old one was replayed.</p>
+
+<h3>How long it is kept</h3>
+<p>Your account, your authorizations and this acceptance stay until the operator
+removes them. Expired authorization codes and tokens are deleted automatically by the
+server's cleanup, after a short retention that exists so a replayed token can still be
+recognized. Encrypted Garmin tokens are deleted when your account is unlinked.</p>
+
+<h3>How to withdraw</h3>
+<p>Ask the operator to revoke your clients' authorizations, which stops every current
+token, and to unlink your Garmin account, which deletes the stored Garmin tokens and
+the link to your Garmin identity. Your acceptance record is kept as the evidence of
+what you were shown; it goes when the account itself is deleted.</p>
+
+<h3>Where this text comes from</h3>
+<p>It describes this build, and it is served from the software itself rather than
+from a page an operator can edit invisibly: the digest recorded with your acceptance
+is the digest of this text. If it changes, you will be asked again.</p>
+</div>
+{{end}}

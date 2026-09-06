@@ -35,34 +35,42 @@ func (f fakeRefusal) Location() string    { return f.location }
 func TestNewRemoteRefusesAnIncoherentConfiguration(t *testing.T) {
 	authz := newFakeAuthorizations(time.Now)
 	garmin := &fakeAuthenticator{}
+	consents := newFakePrivacyConsents(time.Now)
 
 	tests := map[string]struct {
 		config loginweb.RemoteConfig
 		want   error
 	}{
+		"no privacy consent store": {
+			config: loginweb.RemoteConfig{Authorizations: authz, Authenticator: garmin},
+			want:   loginweb.ErrNoPrivacyConsents,
+		},
 		"no authorization server": {
-			config: loginweb.RemoteConfig{Authenticator: garmin},
+			config: loginweb.RemoteConfig{Authenticator: garmin, PrivacyConsents: consents},
 			want:   loginweb.ErrNoAuthorizations,
 		},
 		"no authenticator": {
-			config: loginweb.RemoteConfig{Authorizations: authz},
+			config: loginweb.RemoteConfig{Authorizations: authz, PrivacyConsents: consents},
 			want:   loginweb.ErrNoAuthenticator,
 		},
 		"a negative lifetime": {
 			config: loginweb.RemoteConfig{
-				Authorizations: authz, Authenticator: garmin, TTL: -time.Second,
+				Authorizations: authz, Authenticator: garmin, PrivacyConsents: consents,
+				TTL: -time.Second,
 			},
 			want: loginweb.ErrInvalidConfig,
 		},
 		"a negative attempt budget": {
 			config: loginweb.RemoteConfig{
-				Authorizations: authz, Authenticator: garmin, MaxAttempts: -1,
+				Authorizations: authz, Authenticator: garmin, PrivacyConsents: consents,
+				MaxAttempts: -1,
 			},
 			want: loginweb.ErrInvalidConfig,
 		},
 		"a negative HSTS age": {
 			config: loginweb.RemoteConfig{
-				Authorizations: authz, Authenticator: garmin, HSTSMaxAge: -time.Hour,
+				Authorizations: authz, Authenticator: garmin, PrivacyConsents: consents,
+				HSTSMaxAge: -time.Hour,
 			},
 			want: loginweb.ErrInvalidConfig,
 		},
@@ -145,10 +153,11 @@ func TestTheSessionRegistryIsBounded(t *testing.T) {
 	clock := testkit.NewFakeClock(time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC))
 	authz := newFakeAuthorizations(clock.Now)
 	server, err := loginweb.NewRemote(loginweb.RemoteConfig{
-		Authorizations: authz,
-		Authenticator:  &fakeAuthenticator{},
-		MaxSessions:    1,
-		Now:            clock.Now,
+		Authorizations:  authz,
+		Authenticator:   &fakeAuthenticator{},
+		PrivacyConsents: newFakePrivacyConsents(clock.Now),
+		MaxSessions:     1,
+		Now:             clock.Now,
 	})
 	if err != nil {
 		t.Fatalf("loginweb.NewRemote returned error: %v", err)
