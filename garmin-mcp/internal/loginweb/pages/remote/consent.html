@@ -16,10 +16,10 @@ your Garmin tokens.</p>
 </dl>
 
 <section class="privacy" aria-labelledby="privacy-heading">
-<h2 id="privacy-heading">What this deployment records about you</h2>
+<h2 id="privacy-heading">Ce que ce déploiement enregistre à votre sujet</h2>
 {{template "privacy_summary" .}}
 <details class="privacy-details">
-<summary>Read the notice in full</summary>
+<summary>Lire la notice en entier</summary>
 {{template "privacy_full" .}}
 </details>
 <p class="privacy-version">Notice version {{.Privacy.Version}}.</p>
@@ -31,19 +31,19 @@ your Garmin tokens.</p>
 <p class="privacy-accept">
 <label>
 <input type="checkbox" name="privacy_accepted" value="yes">
-I have read the notice above and accept that this deployment records what it
-describes.
+J'ai lu la notice ci-dessus et j'accepte que ce déploiement enregistre ce qu'elle
+décrit.
 </label>
+<span class="notice">Refuser (« Deny ») n'enregistre aucune acceptation.</span>
 </p>
 {{else}}
-<p class="notice">You accepted this notice on {{.Privacy.AcceptedOn}}. It has not
-changed since.</p>
+<p class="notice">Vous avez accepté cette notice le {{.Privacy.AcceptedOn}}. Elle n'a
+pas changé depuis.</p>
 {{end}}
 <p>
 <button type="submit" name="decision" value="allow">Allow</button>
 <button type="submit" name="decision" value="deny">Deny</button>
 </p>
 </form>
-<p class="notice">Denying discards the Garmin sign-in this page is holding. Denying
-records no acceptance.</p>
+<p class="notice">Denying discards the Garmin sign-in this page is holding.</p>
 {{end}}

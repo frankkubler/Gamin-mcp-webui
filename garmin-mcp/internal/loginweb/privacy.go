@@ -23,7 +23,7 @@ import (
 // It is stored beside the digest so a report reads a date rather than 64 hex
 // characters. It is not what decides whether a person is asked again: the digest is.
 // Bump it when you edit pages/remote/privacy.html, so the two agree.
-const PrivacyNoticeVersion = "2026-09-06"
+const PrivacyNoticeVersion = "2026-09-06-fr"
 
 // privacyNoticeFile is the embedded document whose bytes are the notice.
 const privacyNoticeFile = "pages/remote/privacy.html"

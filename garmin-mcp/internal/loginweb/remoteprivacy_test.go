@@ -24,9 +24,9 @@ func TestConsentPageShowsTheNoticeAndAsksForAcceptance(t *testing.T) {
 	// The summary is on the page itself, not behind the disclosure: a reader who
 	// opens nothing still sees what is recorded and what is not.
 	for _, want := range []string{
-		"What this deployment records about you",
-		"Never recorded",
-		"Read the notice in full",
+		"Ce que ce déploiement enregistre à votre sujet",
+		"Jamais enregistré",
+		"Lire la notice en entier",
 		`name="privacy_accepted"`,
 	} {
 		if !strings.Contains(page, want) {
@@ -35,7 +35,7 @@ func TestConsentPageShowsTheNoticeAndAsksForAcceptance(t *testing.T) {
 	}
 	// The full text is in the document too, so accepting does not depend on a
 	// second request that could fail or be blocked.
-	if !strings.Contains(page, "What is never written to the database") {
+	if !strings.Contains(page, "Ce qui est écrit dans la base") {
 		t.Error("the full notice is not in the consent page")
 	}
 	if h.privacy.count() != 0 {
@@ -51,7 +51,7 @@ func TestGrantingWithoutAcceptingTheNoticeIsRefused(t *testing.T) {
 	resp, again := h.decideWithoutAccepting(page, decisionAllow)
 
 	wantStatus(t, resp, http.StatusBadRequest, "POST /login/consent")
-	if !strings.Contains(again, "Accept the privacy notice") {
+	if !strings.Contains(again, "Acceptez la notice de confidentialité") {
 		t.Error("the re-rendered page does not say what has to be done")
 	}
 	if !strings.Contains(again, `name="privacy_accepted"`) {
@@ -119,7 +119,7 @@ func TestASecondLoginIsNotAskedAgain(t *testing.T) {
 	if strings.Contains(second, `name="privacy_accepted"`) {
 		t.Error("a person who already accepted this notice was asked again")
 	}
-	if !strings.Contains(second, "You accepted this notice on") {
+	if !strings.Contains(second, "Vous avez accepté cette notice le") {
 		t.Error("the page does not state when the notice was accepted")
 	}
 	resp := h.decide(second, decisionAllow)

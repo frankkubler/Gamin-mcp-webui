@@ -1,113 +1,124 @@
 {{/*
-The privacy notice, in two parts: a summary that is always visible, and the full
-text behind a disclosure the reader opens if they want it.
+La notice de confidentialité, en deux parties : un résumé toujours visible, et le
+texte intégral derrière un dépliant que le lecteur ouvre s'il le souhaite.
 
-This file is the notice. Its bytes are digested at start-up and that digest is what
-an acceptance is recorded against, so editing anything here — a word, a heading, the
-whole text in another language — makes every account see the notice again and accept
-it afresh. Bump PrivacyNoticeVersion in privacy.go when you edit it, so the record
-carries a label a human can read as well as a digest a machine can compare.
+Ce fichier est la notice. Ses octets sont condensés au démarrage, et c'est cette
+empreinte qui identifie une acceptation : éditer quoi que ce soit ici — un mot, un
+titre, la traduction entière du texte — fait revoir la notice à tous les comptes, qui
+l'acceptent à nouveau. Remontez PrivacyNoticeVersion dans privacy.go quand vous
+l'éditez, pour que la ligne enregistrée porte aussi un libellé lisible.
 
-The text states what this build actually does. Check it against the code before
-changing it: the tables it names are in migrations/, and what is deliberately absent
-from them is the point of half these sentences.
+Le texte décrit ce que ce build fait réellement. Vérifiez-le contre le code avant de
+le changer : les tables qu'il nomme sont dans migrations/, et ce qui en est
+délibérément absent est le sujet de la moitié de ces phrases.
 */}}
 
 {{define "privacy_summary"}}
 <ul class="privacy-summary">
-<li><strong>Recorded:</strong> your e-mail address, an encrypted link to your Garmin
-account, your Garmin session tokens (encrypted), which clients you authorized and
-when, and the fact that you accepted this notice.</li>
-<li><strong>Never recorded:</strong> your Garmin password, and none of your health,
-activity, sleep, heart-rate or location data. Those are fetched from Garmin only
-while a request is running and are passed straight to the client that asked.</li>
-<li><strong>Never sent to the client:</strong> your Garmin password and your Garmin
-tokens. A client receives a token for this server only.</li>
-<li><strong>You can stop it:</strong> ask the operator to revoke a client's access or
-to unlink your Garmin account. Unlinking deletes the stored Garmin tokens.</li>
+<li><strong>Enregistré :</strong> votre adresse e-mail, un lien chiffré vers votre
+compte Garmin, vos jetons de session Garmin (chiffrés), les clients que vous avez
+autorisés et quand, et le fait que vous avez accepté cette notice.</li>
+<li><strong>Jamais enregistré :</strong> votre mot de passe Garmin, ni aucune de vos
+données de santé, d'activité, de sommeil, de fréquence cardiaque ou de position.
+Celles-ci sont récupérées auprès de Garmin le temps d'une requête et transmises
+directement au client qui les a demandées.</li>
+<li><strong>Jamais transmis au client :</strong> votre mot de passe Garmin et vos
+jetons Garmin. Un client reçoit un jeton valable pour ce serveur uniquement.</li>
+<li><strong>Vous pouvez y mettre fin :</strong> demandez à l'exploitant de révoquer
+l'accès d'un client ou de délier votre compte Garmin. Délier supprime les jetons
+Garmin conservés.</li>
 </ul>
 {{end}}
 
 {{define "privacy_full"}}
 <div class="privacy-full">
 
-<h3>Who processes what</h3>
-<p>The operator of this deployment runs this server and holds its encryption key.
-They decide how long it runs and who may use it, and they are the people to contact
-about your data. This software does not send anything to its authors.</p>
+<h3>Qui traite quoi</h3>
+<p>L'exploitant de ce déploiement fait tourner ce serveur et détient sa clé de
+chiffrement. C'est lui qui décide combien de temps il fonctionne et qui peut s'en
+servir, et c'est à lui qu'il faut s'adresser au sujet de vos données. Ce logiciel
+n'envoie rien à ses auteurs.</p>
 
-<h3>What is written to the database</h3>
+<h3>Ce qui est écrit dans la base</h3>
 <dl>
-<dt>Your e-mail address</dt>
-<dd>In the clear. It is your login handle and the only human-readable identifier of
-your account. It is never used to isolate your data — that is done with a random
-internal identifier, so changing your e-mail moves nothing.</dd>
+<dt>Votre adresse e-mail</dt>
+<dd>En clair. C'est votre identifiant de connexion et la seule donnée lisible qui
+désigne votre compte. Elle ne sert jamais à isoler vos données — cela se fait avec un
+identifiant interne aléatoire, si bien que changer d'e-mail ne déplace rien.</dd>
 
-<dt>A fingerprint of your Garmin account identifier</dt>
-<dd>A keyed digest, not the identifier itself. It exists so the same Garmin account
-cannot silently become two accounts here.</dd>
+<dt>Une empreinte de votre identifiant de compte Garmin</dt>
+<dd>Une empreinte à clé, et non l'identifiant lui-même. Elle existe pour qu'un même
+compte Garmin ne puisse pas devenir silencieusement deux comptes ici.</dd>
 
-<dt>Your Garmin account identifier and display name</dt>
-<dd>Encrypted, readable only with this deployment's key.</dd>
+<dt>Votre identifiant de compte Garmin et votre nom affiché</dt>
+<dd>Chiffrés, lisibles seulement avec la clé de ce déploiement.</dd>
 
-<dt>Your Garmin session tokens</dt>
-<dd>Encrypted. They are what lets this server call Garmin on your behalf without
-asking for your password again. They are replaced whenever Garmin rotates them.</dd>
+<dt>Vos jetons de session Garmin</dt>
+<dd>Chiffrés. Ce sont eux qui permettent à ce serveur d'appeler Garmin pour votre
+compte sans redemander votre mot de passe. Ils sont remplacés chaque fois que Garmin
+les renouvelle.</dd>
 
-<dt>Your authorizations</dt>
-<dd>Which client you allowed, for which address and which permissions, when you
-granted it and, if it happens, when it was revoked. A revocation is recorded rather
-than erased, so the trail of what was allowed survives.</dd>
+<dt>Vos autorisations</dt>
+<dd>Quel client vous avez autorisé, pour quelle adresse et quelles permissions, quand
+vous l'avez accordé et, le cas échéant, quand cela a été révoqué. Une révocation est
+enregistrée plutôt qu'effacée, pour que la trace de ce qui a été autorisé subsiste.</dd>
 
-<dt>Digests of the access tokens issued to your clients</dt>
-<dd>The tokens themselves are never stored and cannot be recovered from what is.
-Their issue, expiry and rotation instants are stored, which is what lets a stolen
-token be detected and revoked.</dd>
+<dt>Les empreintes des jetons d'accès délivrés à vos clients</dt>
+<dd>Les jetons eux-mêmes ne sont jamais conservés et ne peuvent pas être reconstitués
+à partir de ce qui l'est. Leurs instants d'émission, d'expiration et de renouvellement
+le sont, et c'est ce qui permet de détecter et de révoquer un jeton volé.</dd>
 
-<dt>This acceptance</dt>
-<dd>A digest of the exact text you are reading, the label it carries, and the instant
-you accepted it. That is the record that you were shown this, and which version.</dd>
+<dt>Cette acceptation</dt>
+<dd>Une empreinte du texte exact que vous êtes en train de lire, le libellé qu'il
+porte, et l'instant où vous l'avez accepté. C'est la trace du fait que ceci vous a été
+montré, et dans quelle version.</dd>
 </dl>
 
-<h3>What is never written to the database</h3>
+<h3>Ce qui n'est jamais écrit dans la base</h3>
 <ul>
-<li><strong>Your Garmin password.</strong> It is used once, to sign you in to Garmin,
-and is never stored, never logged, and never sent anywhere but Garmin.</li>
-<li><strong>Your health and activity data.</strong> No heart rate, sleep, weight,
-workout, training metric or GPS coordinate is stored here. The database has no column
-for any of it. When a client asks for such data, this server fetches it from Garmin
-and hands it to the client while the request runs; nothing is kept afterwards, on
-disk or in a cache.</li>
-<li><strong>Your IP address, your browser, your device.</strong> The database has no
-column for them. Your address is used while a request is in flight, to apply rate
-limits. Whatever the operator's own infrastructure records — a reverse proxy, a
-container log — is outside this software and is the operator's to describe.</li>
-<li><strong>What you ask your assistant.</strong> The content of your conversations
-with an MCP client never reaches this server.</li>
+<li><strong>Votre mot de passe Garmin.</strong> Il sert une fois, à vous connecter à
+Garmin, et n'est jamais conservé, jamais journalisé, et jamais envoyé ailleurs qu'à
+Garmin.</li>
+<li><strong>Vos données de santé et d'activité.</strong> Aucune fréquence cardiaque,
+aucun sommeil, aucun poids, aucune séance, aucune métrique d'entraînement, aucune
+coordonnée GPS n'est conservée ici. La base n'a de colonne pour rien de tout cela.
+Quand un client demande de telles données, ce serveur les récupère auprès de Garmin et
+les lui transmet le temps de la requête ; rien n'est gardé ensuite, ni sur disque ni
+en cache.</li>
+<li><strong>Votre adresse IP, votre navigateur, votre appareil.</strong> La base n'a
+pas de colonne pour eux. Votre adresse est utilisée pendant la requête, pour appliquer
+des limites de débit. Ce que l'infrastructure de l'exploitant enregistre de son côté —
+un reverse proxy, les journaux d'un conteneur — est extérieur à ce logiciel et c'est à
+lui de le décrire.</li>
+<li><strong>Ce que vous demandez à votre assistant.</strong> Le contenu de vos
+conversations avec un client MCP n'atteint jamais ce serveur.</li>
 </ul>
 
-<h3>What a client you authorize receives</h3>
-<p>An access token valid for this server alone, limited to the permissions shown on
-this page, and the data it then asks for. It never receives your Garmin password, your
-Garmin tokens, or access to anyone else's account. A token stops working when it
-expires, when you have its authorization revoked, or when this server detects that an
-old one was replayed.</p>
+<h3>Ce que reçoit un client que vous autorisez</h3>
+<p>Un jeton d'accès valable pour ce serveur seulement, limité aux permissions
+affichées sur cette page, puis les données qu'il demande ensuite. Il ne reçoit jamais
+votre mot de passe Garmin, ni vos jetons Garmin, ni l'accès au compte de quelqu'un
+d'autre. Un jeton cesse de fonctionner à son expiration, quand vous faites révoquer
+son autorisation, ou quand ce serveur détecte qu'un ancien jeton a été rejoué.</p>
 
-<h3>How long it is kept</h3>
-<p>Your account, your authorizations and this acceptance stay until the operator
-removes them. Expired authorization codes and tokens are deleted automatically by the
-server's cleanup, after a short retention that exists so a replayed token can still be
-recognized. Encrypted Garmin tokens are deleted when your account is unlinked.</p>
+<h3>Combien de temps c'est conservé</h3>
+<p>Votre compte, vos autorisations et cette acceptation restent jusqu'à ce que
+l'exploitant les supprime. Les codes d'autorisation et les jetons expirés sont
+supprimés automatiquement par le nettoyage du serveur, après une courte rétention qui
+existe pour qu'un jeton rejoué reste reconnaissable. Les jetons Garmin chiffrés sont
+supprimés quand votre compte est délié.</p>
 
-<h3>How to withdraw</h3>
-<p>Ask the operator to revoke your clients' authorizations, which stops every current
-token, and to unlink your Garmin account, which deletes the stored Garmin tokens and
-the link to your Garmin identity. Your acceptance record is kept as the evidence of
-what you were shown; it goes when the account itself is deleted.</p>
+<h3>Comment revenir sur votre consentement</h3>
+<p>Demandez à l'exploitant de révoquer les autorisations de vos clients, ce qui met
+fin à tous les jetons en cours, et de délier votre compte Garmin, ce qui supprime les
+jetons Garmin conservés ainsi que le lien vers votre identité Garmin. La trace de
+votre acceptation est conservée : c'est elle qui atteste de ce qui vous a été montré.
+Elle disparaît quand le compte lui-même est supprimé.</p>
 
-<h3>Where this text comes from</h3>
-<p>It describes this build, and it is served from the software itself rather than
-from a page an operator can edit invisibly: the digest recorded with your acceptance
-is the digest of this text. If it changes, you will be asked again.</p>
+<h3>D'où vient ce texte</h3>
+<p>Il décrit ce build, et il est servi par le logiciel lui-même plutôt que depuis une
+page qu'un exploitant pourrait modifier sans que cela se voie : l'empreinte
+enregistrée avec votre acceptation est l'empreinte de ce texte. S'il change, la
+question vous sera reposée.</p>
 </div>
 {{end}}

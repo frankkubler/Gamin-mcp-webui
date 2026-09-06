@@ -36,7 +36,10 @@ trail of what was accepted, and when, survives.
 ## Editing the text
 
 The notice is `internal/loginweb/pages/remote/privacy.html`. It is a template with two
-blocks — `privacy_summary` and `privacy_full` — and the consent page renders both.
+blocks — `privacy_summary` and `privacy_full` — and the consent page renders both. The
+shipped text is in French, as are the labels this fork adds around it (the heading, the
+disclosure, the acceptance box and the server's refusal message). The rest of the login
+pages are upstream and remain in English.
 
 Its bytes are digested at start-up, and an acceptance is recorded against that digest.
 So editing anything in that file — a word, a heading, the whole text translated into

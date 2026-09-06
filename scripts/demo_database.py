@@ -102,7 +102,7 @@ def build(path: Path, seed: int = 7) -> None:
                 (
                     principal_id,
                     f"{index:064d}",
-                    "2026-09-06",
+                    "2026-09-06-fr",
                     iso(created + timedelta(minutes=4)),
                 ),
             )

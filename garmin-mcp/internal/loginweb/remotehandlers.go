@@ -39,7 +39,8 @@ const (
 
 // msgPrivacyRequired is shown when the notice was not accepted. It states what to do
 // rather than blaming the reader, and quotes nothing that was submitted.
-const msgPrivacyRequired = "Accept the privacy notice below to grant access, or choose Deny."
+const msgPrivacyRequired = "Acceptez la notice de confidentialité ci-dessous pour " +
+	"accorder l'accès, ou choisissez Deny."
 
 // Handler returns the router for this deployment.
 //

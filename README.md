@@ -119,12 +119,17 @@ de ce qui a été accepté survit.
 ### Modifier le texte
 
 Il est dans `garmin-mcp/internal/loginweb/pages/remote/privacy.html`, en deux blocs
-(résumé et texte intégral). Il est en anglais, comme le reste des pages de login du
-serveur amont ; le traduire est une édition de ce seul fichier, et l'empreinte changeant,
-chacun le réacceptera. Pensez à remonter `PrivacyNoticeVersion` dans
-`garmin-mcp/internal/loginweb/privacy.go` pour que la ligne enregistrée porte aussi un
-libellé lisible. Le détail est dans
+(résumé et texte intégral), **en français**. Le modifier ou le traduire est une édition de
+ce seul fichier ; l'empreinte changeant, chacun le réacceptera. Pensez à remonter
+`PrivacyNoticeVersion` dans `garmin-mcp/internal/loginweb/privacy.go` pour que la ligne
+enregistrée porte aussi un libellé lisible. Le détail est dans
 [garmin-mcp/docs/privacy-notice.md](garmin-mcp/docs/privacy-notice.md).
+
+Le reste de la page de login vient du serveur amont et est en anglais : le titre, le
+descriptif du client demandeur, les boutons *Allow* et *Deny*. Seul le bloc ajouté par ce
+dépôt est traduit. Traduire les pages amont est possible — ce sont les fichiers voisins
+dans `pages/remote/` — mais chaque fichier touché est un conflit potentiel à la prochaine
+mise à jour du subtree.
 
 Le texte livré décrit ce que ce build fait réellement, vérifié contre le schéma. **Si
 vous changez ce que le serveur stocke, la notice fait partie du changement** — et c'est
