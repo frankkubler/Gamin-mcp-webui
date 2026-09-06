@@ -159,6 +159,46 @@ compte antérieur à la mise en place. Deux tuiles comptent les deux populations
 isole les comptes sans consentement, le détail liste toutes les acceptations avec leur
 empreinte, et l'export CSV porte les mêmes colonnes.
 
+## Écrire les séances dans Garmin
+
+Par défaut, un déploiement est en lecture seule. Pour que Claude puisse **créer, envoyer
+et planifier des séances** dans le compte Garmin de la personne, deux choses doivent
+être vraies en même temps :
+
+1. `GARMIN_MCP_ENABLE_WRITE_TOOLS=true` — sinon les outils d'écriture ne sont pas
+   servis du tout ;
+2. le client OAuth déclare la portée `garmin:workouts:write`, et la personne l'accorde
+   sur la page de consentement, qui la lui affiche nommément.
+
+```
+GARMIN_MCP_ENABLE_WRITE_TOOLS=true
+GARMIN_MCP_OAUTH_CLIENTS=[{"id":"claude-web-desktop","name":"Claude",
+  "redirect-uris":["http://127.0.0.1:33418/callback"],
+  "scopes":["garmin:read","garmin:workouts:write"],
+  "resources":["https://mcp.exemple.fr/mcp"],"public":true}]
+```
+
+Les deux conditions sont nécessaires, et c'est ce qui rend le réglage sûr : activer les
+outils ne donne rien tant que personne n'a consenti, et consentir ne donne rien si le
+serveur ne les sert pas.
+
+**La portée est fine.** `garmin:workouts:write` couvre exactement onze outils —
+`create_run_workout`, `create_strength_workout`, `create_walk_run_workout`,
+`create_z2_walk_workout`, `upload_workout`, `upload_workouts`, `update_workout`,
+`schedule_workout`, `schedule_workouts`, `schedule_week` — et rien d'autre. Le poids, la
+nutrition, les activités, le matériel relèvent de portées distinctes qui restent
+refusées faute d'avoir été accordées.
+
+**Supprimer reste impossible.** `delete_workout` et `unschedule_workout` sont classés
+destructifs : ils demandent `GARMIN_MCP_ENABLE_DESTRUCTIVE_TOOLS=true` *et* la portée
+`garmin:workouts:destructive`, ni l'un ni l'autre activés ici.
+
+Changer les portées d'un client est une **ré-autorisation** : les jetons existants ont
+été émis pour les anciennes, et chaque personne devra repasser par la page de
+consentement. La notice de confidentialité, elle, n'a pas à changer — elle dit déjà que
+le client reçoit un jeton « limité aux permissions affichées sur cette page », ce qui
+reste exact quelles que soient ces permissions.
+
 ## La validation des comptes
 
 Par défaut, **un nouveau compte n'est utilisable qu'une fois validé dans l'interface**.
@@ -364,7 +404,8 @@ remplacés par des soulignés, préfixée `GARMIN_MCP_`. La liste complète est 
 | `GARMIN_MCP_DATABASE_PATH` | `/data/garmin.db` | base SQLite, partagée avec l'interface. |
 | `GARMIN_MCP_MASTER_KEY_FILE` | `/data/keys/key-v1.json` | la valeur sélectionne le répertoire ; le nom de fichier appartient au serveur. |
 | `GARMIN_MCP_STATE_DIR` | `/data` | état hors base. |
-| `GARMIN_MCP_ENABLE_WRITE_TOOLS` | `false` | outils d'écriture (nécessite aussi la portée OAuth correspondante). |
+| `GARMIN_MCP_ENABLE_WRITE_TOOLS` | `false` | sert les outils d'écriture. Sans portée accordée, ils restent refusés — voir « Écrire les séances ». |
+| `GARMIN_MCP_ENABLE_DESTRUCTIVE_TOOLS` | `false` | sert les outils de suppression. Exige aussi `ENABLE_WRITE_TOOLS` et une portée `:destructive`. |
 | `GARMIN_MCP_REQUIRE_ACCOUNT_APPROVAL` | `true` | ajout de ce dépôt : un nouveau compte attend une validation dans l'interface. |
 
 ### Conteneur

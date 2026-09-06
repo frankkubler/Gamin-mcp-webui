@@ -30,7 +30,9 @@ Le serveur tourne chez moi, donc autant être clair. Tu retrouveras tout ceci pe
 
 **Tes données sont isolées des miennes et de celles des autres.** Chaque personne a son propre identifiant interne ; ton jeton ne donne accès qu'à ton compte.
 
-**L'accès est en lecture seule.** Les outils d'écriture et de suppression sont désactivés. Claude ne peut rien modifier ni effacer dans ton Garmin.
+**Claude peut lire toutes tes données, et écrire une seule chose : des séances.** Il peut créer un entraînement, l'envoyer dans ton compte et le placer à une date de ton calendrier Garmin. C'est tout ce qu'il peut modifier : ni ton poids, ni ta nutrition, ni tes activités, ni ton matériel — ces autorisations-là ne sont pas accordées.
+
+**Il ne peut rien supprimer.** Effacer une séance ou la retirer du calendrier relève d'une autorisation « destructive » qui n'est pas activée. Si une séance créée ne te convient pas, supprime-la toi-même dans Garmin Connect.
 
 **Ce que je peux voir techniquement** : ton adresse email apparaît dans la base du serveur, et je peux voir quand tu t'es connecté pour la dernière fois. Je ne consulte pas tes données d'entraînement, mais je pourrais techniquement y accéder puisque j'administre la machine. Si ça te gêne, ne fais pas cette installation — c'est une question de confiance, pas de technique.
 
@@ -98,7 +100,14 @@ Saisis ton email et ton mot de passe **Garmin Connect** — pas ceux de Claude.
 
 Si tu as activé la double authentification, un code te sera demandé ensuite.
 
-Arrive alors l'écran d'autorisation. Il te dit qui demande l'accès et pour quoi (`garmin:read`), et il affiche **ce que le déploiement enregistre à ton sujet** : un résumé, et le texte complet si tu déplies « Lire la notice en entier ».
+Arrive alors l'écran d'autorisation. Il te dit qui demande l'accès et pour quoi — tu verras deux permissions :
+
+| Permission | Ce qu'elle autorise |
+|---|---|
+| `garmin:read` | lire tes données : activités, sommeil, fréquence cardiaque, forme… |
+| `garmin:workouts:write` | créer une séance, l'envoyer dans ton compte, la planifier |
+
+Il affiche aussi **ce que le déploiement enregistre à ton sujet** : un résumé, et le texte complet si tu déplies « Lire la notice en entier ».
 
 ![L'écran de consentement, notice dépliée](consentement.png)
 
@@ -150,15 +159,13 @@ Vérifie aussi que tu arrives bien à te connecter sur `connect.garmin.com` depu
 
 Étape facile à manquer, et sans elle Claude te demandera une confirmation **à chaque appel** — soit dix ou vingt clics pour une seule question.
 
-Toujours dans **Connectors**, clique sur le connecteur `garmin`. Tu vois une section **Autorisations des outils** avec la ligne **Outils en lecture seule (100)**, et un menu déroulant à droite.
+Toujours dans **Connectors**, clique sur le connecteur `garmin`. Tu vois une section **Autorisations des outils**, avec une ligne par catégorie et un menu déroulant à droite.
 
-Choisis **Toujours autoriser**.
+**Outils en lecture seule** → choisis **Toujours autoriser**. C'est sans risque : ils ne font que lire, et sans ça Claude te demandera une confirmation à chaque appel — dix ou vingt clics pour une seule question.
+
+**Outils d'écriture** (création et planification de séances) → **je te conseille de laisser « Nécessite une approbation »**. Ils écrivent dans ton compte Garmin : mieux vaut voir passer chaque séance avant qu'elle y soit créée. Ils sont peu nombreux et tu ne les déclencheras qu'en le demandant, donc la gêne est minime.
 
 ![Capture : les autorisations des outils](captures/07-autorisations.png)
-
-C'est sans risque ici : les 100 outils sont en lecture seule, et les outils d'écriture et de suppression sont désactivés côté serveur. Claude ne peut rien modifier dans ton compte Garmin, quoi que tu autorises.
-
-Si tu préfères garder la main, laisse **Nécessite une approbation** — ça fonctionne aussi, c'est juste beaucoup plus fastidieux à l'usage.
 
 ---
 
@@ -187,6 +194,14 @@ Claude doit répondre avec ton prénom et confirmer l'authentification.
 
 Claude a accès à une centaine d'outils en lecture : activités, sommeil, fréquence cardiaque, VFC, stress, Body Battery, charge d'entraînement, VO2 max, appareils, records, badges.
 
+Et, puisqu'il peut écrire des séances, tu peux aussi lui demander :
+
+- Crée-moi une séance de fractionné 10 × 400 m et envoie-la sur ma montre
+- Construis une sortie longue en zone 2 de 1 h 30 et planifie-la dimanche
+- Programme ma semaine d'entraînement à partir de ce que je viens de te décrire
+
+Il te dira ce qu'il a créé. Vérifie dans Garmin Connect avant de partir courir : c'est ton calendrier, et il n'y a pas de bouton « annuler » côté Claude — pour supprimer une séance, passe par Garmin Connect.
+
 ---
 
 ## Se déconnecter
@@ -214,6 +229,9 @@ La case n'était pas cochée. Coche-la et recommence, il n'y a rien d'autre à r
 
 **On me redemande d'accepter la notice alors que je l'avais déjà acceptée**
 J'ai modifié le texte de la notice. Relis-le et accepte à nouveau, c'est voulu.
+
+**Claude dit qu'il n'a pas la permission de créer une séance**
+Ton autorisation date d'avant l'ajout de cette permission. Retire le connecteur, rajoute-le et reconnecte-toi : l'écran de consentement doit afficher `garmin:workouts:write`.
 
 **« Les paramètres du serveur n'ont pas pu être déterminés »**
 Continue quand même vers la configuration manuelle, et vérifie surtout que tu as bien saisi `claude-web-desktop` en Client ID.
