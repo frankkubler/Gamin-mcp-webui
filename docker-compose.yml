@@ -1,40 +1,72 @@
-# Exemple de deploiement a cote d'un garmin-mcp existant.
+# Pile complete dans un seul conteneur : le serveur MCP garmin-mcp (dossier
+# garmin-mcp/, compile depuis les sources de ce depot) et l'interface web des
+# comptes, sur la meme base SQLite.
 #
-# L'interface ne partage avec garmin-mcp que le volume de donnees, monte en
-# lecture seule. garmin-mcp ouvre sa base en WAL : sur un montage :ro, SQLite ne
-# peut pas ouvrir le fichier -shm, l'interface bascule alors automatiquement sur
-# une copie temporaire (voir app/db.py). Si vous preferez la lecture directe,
-# montez le volume sans :ro — l'interface force malgre tout PRAGMA query_only.
+#   cp .env.example .env   # renseignez au minimum WEBUI_PASSWORD et l'URL publique
+#   docker compose up -d --build
+#
+# Ports publies sur la boucle locale uniquement : mettez un reverse proxy TLS
+# devant avant d'exposer quoi que ce soit sur Internet.
 
 services:
-  garmin-mcp-webui:
-    build: .
-    # image: ghcr.io/frankkubler/gamin-mcp-webui:latest
-    container_name: garmin-mcp-webui
+  garmin-mcp:
+    build:
+      context: .
+      args:
+        GARMIN_MCP_VERSION: ${GARMIN_MCP_VERSION:-fork-webui}
+        GARMIN_MCP_COMMIT: ${GARMIN_MCP_COMMIT:-inconnu}
+    image: gamin-mcp-webui:latest
+    container_name: garmin-mcp
     restart: unless-stopped
+
     environment:
-      WEBUI_DATABASE_PATH: /data/garmin.db
-      WEBUI_USERNAME: admin
-      WEBUI_PASSWORD: ${WEBUI_PASSWORD:?definissez WEBUI_PASSWORD dans .env}
+      # --- Ce que le conteneur lance : les-deux, mcp ou webui ---
+      RUN_SERVICES: ${RUN_SERVICES:-les-deux}
+
+      # --- Serveur MCP (toutes les cles de garmin-mcp, prefixees GARMIN_MCP_) ---
+      GARMIN_MCP_PUBLIC_URL: ${GARMIN_MCP_PUBLIC_URL:?renseignez GARMIN_MCP_PUBLIC_URL dans .env}
+      GARMIN_MCP_OAUTH_CLIENTS: ${GARMIN_MCP_OAUTH_CLIENTS:?renseignez GARMIN_MCP_OAUTH_CLIENTS dans .env}
+      GARMIN_MCP_BIND_ADDRESS: ${GARMIN_MCP_BIND_ADDRESS:-0.0.0.0:8180}
+      GARMIN_MCP_ALLOW_INSECURE_HTTP: ${GARMIN_MCP_ALLOW_INSECURE_HTTP:-false}
+      GARMIN_MCP_TRUSTED_PROXY_CIDRS: ${GARMIN_MCP_TRUSTED_PROXY_CIDRS:-}
+      GARMIN_MCP_REGION: ${GARMIN_MCP_REGION:-garmin.com}
+      GARMIN_MCP_ENABLE_WRITE_TOOLS: ${GARMIN_MCP_ENABLE_WRITE_TOOLS:-false}
+      GARMIN_MCP_LOG_LEVEL: ${GARMIN_MCP_LOG_LEVEL:-info}
+      GARMIN_MCP_LOG_FORMAT: ${GARMIN_MCP_LOG_FORMAT:-json}
+
+      # --- Interface web ---
+      WEBUI_USERNAME: ${WEBUI_USERNAME:-admin}
+      WEBUI_PASSWORD: ${WEBUI_PASSWORD:?renseignez WEBUI_PASSWORD dans .env}
       WEBUI_API_TOKEN: ${WEBUI_API_TOKEN:-}
-      WEBUI_ACTIVE_DAYS: "7"
-      WEBUI_IDLE_DAYS: "30"
-      WEBUI_MASK_EMAILS: "0"
-      WEBUI_TITLE: "Comptes garmin-mcp"
+      WEBUI_MASK_EMAILS: ${WEBUI_MASK_EMAILS:-0}
+      WEBUI_ACTIVE_DAYS: ${WEBUI_ACTIVE_DAYS:-7}
+      WEBUI_IDLE_DAYS: ${WEBUI_IDLE_DAYS:-30}
+      WEBUI_TITLE: ${WEBUI_TITLE:-Comptes garmin-mcp}
+
     volumes:
-      - garmin-mcp-data:/data:ro
+      # La base SQLite et la cle maitre. Sauvegardez les deux ensemble : une base
+      # sans sa cle est illisible.
+      - garmin-mcp-data:/data
+
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8080:8080"   # interface web
+      - "127.0.0.1:8180:8180"   # endpoint MCP et pages de login OAuth
+
+    # Le conteneur demarre en root le temps d'ajuster /data, puis redescend sur
+    # le compte de service : seul le volume est inscriptible.
+    read_only: true
     tmpfs:
       - /tmp
-    read_only: true
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID
+      - SETGID
 
 volumes:
-  # Le volume ecrit par le conteneur garmin-mcp (adaptez le nom ou remplacez par
-  # un bind mount vers le repertoire qui contient garmin.db).
   garmin-mcp-data:
-    external: true

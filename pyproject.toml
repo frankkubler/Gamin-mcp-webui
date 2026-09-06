@@ -33,6 +33,8 @@ filterwarnings = ["ignore::DeprecationWarning", "ignore::UserWarning"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# garmin-mcp/ est une copie du depot amont : ses conventions sont les siennes.
+extend-exclude = ["garmin-mcp"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "C4"]

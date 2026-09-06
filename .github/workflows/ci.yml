@@ -6,7 +6,8 @@ on:
   pull_request:
 
 jobs:
-  tests:
+  webui:
+    name: Interface web (${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -22,3 +23,69 @@ jobs:
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest -q
+
+  serveur:
+    name: Serveur MCP (fork amont)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: garmin-mcp/go.mod
+          cache-dependency-path: garmin-mcp/go.sum
+      # Le fork amont garde ses propres tests ; on verifie ici que le code
+      # vendorise compile et s'execute, ce dont depend l'image.
+      - name: Compiler
+        working-directory: garmin-mcp
+        run: CGO_ENABLED=0 go build -trimpath -o /tmp/garmin-mcp ./cmd/garmin-mcp
+      - name: Verifier le binaire
+        run: |
+          /tmp/garmin-mcp version
+          /tmp/garmin-mcp tools list | grep ' tools:'
+
+  entrypoint:
+    name: Scripts du conteneur
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Analyse statique du shell
+        run: sudo apt-get update && sudo apt-get install -y shellcheck && shellcheck docker/entrypoint.sh
+
+  image:
+    name: Image Docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Construire l'image complete
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: gamin-mcp-webui:ci
+          build-args: |
+            GARMIN_MCP_VERSION=ci
+            GARMIN_MCP_COMMIT=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Demarrer la pile et sonder les deux services
+        run: |
+          docker run -d --name pile \
+            -e GARMIN_MCP_PUBLIC_URL=https://127.0.0.1:8180/mcp \
+            -e GARMIN_MCP_SELF_SIGNED_TLS=1 \
+            -e GARMIN_MCP_BIND_ADDRESS=127.0.0.1:8180 \
+            -e 'GARMIN_MCP_OAUTH_CLIENTS=[{"id":"ci","name":"CI","redirect-uris":["http://127.0.0.1:33418/callback"],"scopes":["garmin:read"],"resources":["https://127.0.0.1:8180/mcp"],"public":true}]' \
+            -e WEBUI_PASSWORD=ci-secret \
+            -p 127.0.0.1:8080:8080 \
+            gamin-mcp-webui:ci
+          for _ in $(seq 30); do
+            etat=$(docker inspect --format '{{.State.Health.Status}}' pile 2>/dev/null || echo inconnu)
+            [ "$etat" = "healthy" ] && break
+            [ "$etat" = "unhealthy" ] && break
+            sleep 2
+          done
+          docker logs pile
+          test "$(docker inspect --format '{{.State.Health.Status}}' pile)" = "healthy"
+          curl -fsS -u admin:ci-secret http://127.0.0.1:8080/api/stats
+          docker rm -f pile

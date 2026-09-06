@@ -1,23 +1,34 @@
 # Gamin-mcp-webui
 
-Interface web de consultation, en lecture seule, des **comptes créés sur un serveur
-[garmin-mcp](https://github.com/tamcore/garmin-mcp) distant et de leur dernière connexion**.
+Le serveur MCP **[garmin-mcp](https://github.com/tamcore/garmin-mcp)** et une **interface web de
+consultation des comptes**, dans un seul dépôt et une seule image Docker.
 
-Le projet amont est un serveur MCP écrit en Go qui, en mode `remote`, authentifie plusieurs
-comptes via OAuth 2.1 et stocke leur état dans une base SQLite (`database-path`, en général
-`/data/garmin.db`). Il n'expose aucune page ni aucune API d'administration : impossible de
-savoir, depuis le serveur lui-même, qui a créé un compte ni quand ce compte s'est connecté
-pour la dernière fois. Cette interface comble ce manque sans modifier garmin-mcp : elle lit
-sa base et rend le résultat dans un navigateur.
+Le serveur amont, écrit en Go, authentifie plusieurs comptes via OAuth 2.1 en mode `remote` et
+garde leur état dans une base SQLite. Il n'expose aucune page ni API d'administration : impossible
+de savoir, depuis le serveur lui-même, qui a créé un compte ni quand ce compte s'est connecté pour
+la dernière fois. Ce dépôt ajoute cette vue et fait tourner les deux ensemble.
+
+Le serveur amont est vendorisé dans `garmin-mcp/` par `git subtree` : c'est une copie versionnée
+du dépôt public, mettable à jour d'une commande (voir « Suivre l'amont »), et non un simple
+téléchargement au moment du build.
 
 ![Capture de l'interface : tuiles d'indicateurs et tableau des comptes avec leur dernière connexion](docs/interface.png)
 
 ```
-┌──────────────┐   écrit    ┌─────────────┐   lit (RO)   ┌────────────────┐
-│  garmin-mcp  │ ─────────► │ garmin.db   │ ◄─────────── │ Gamin-mcp-webui│
-│  (Go, OAuth) │            │  (SQLite)   │              │ (FastAPI + UI) │
-└──────────────┘            └─────────────┘              └────────────────┘
+              conteneur unique
+┌───────────────────────────────────────────────┐
+│  garmin-mcp serve  ──écrit──►  /data/garmin.db│  :8180  endpoint MCP + login OAuth
+│  (Go, OAuth 2.1)               (SQLite, WAL)  │
+│                                      ▲        │
+│  interface web  ──────lit (RO)───────┘        │  :8080  interface + API JSON
+│  (FastAPI)                                    │
+└───────────────────────────────────────────────┘
+                    /data : base + clé maîtresse + TLS (volume)
 ```
+
+Les deux processus tournent sous le même compte de service, condition nécessaire pour qu'une base
+SQLite en mode WAL soit lisible par le second. Le conteneur s'arrête dès que l'un des deux
+s'arrête, pour que la politique de redémarrage de Docker s'applique à l'ensemble.
 
 ## Ce que l'interface affiche
 
@@ -69,8 +80,20 @@ Un compte dont aucun signal ne dépasse sa date de création est classé **jamai
 
 ## Sécurité
 
+Ce qui suit concerne l'interface web. Le modèle de menace du serveur MCP lui-même — isolation des
+comptes, chiffrement des jetons, gestion des clés — est celui du projet amont, décrit dans
+`garmin-mcp/docs/threat-model.md`.
+
 - **Lecture seule, sans exception.** Chaque connexion SQLite est ouverte en `mode=ro` avec
-  `PRAGMA query_only`, et un test vérifie qu'un `DELETE` échoue.
+  `PRAGMA query_only`, et un test vérifie qu'un `DELETE` échoue. L'interface ne peut pas corrompre
+  la base que le serveur MCP écrit à côté d'elle.
+- **Conteneur non privilégié.** L'entrypoint n'est root que le temps d'ajuster l'appartenance de
+  `/data`, puis redescend sur un compte de service via `setpriv`. La racine du système de fichiers
+  peut rester en lecture seule (`read_only: true` dans le compose), `/data` est en `0700`, et les
+  deux ports servis sont publiés sur la boucle locale.
+- **Deux ports, deux publics.** `8180` est l'endpoint MCP et les pages de login OAuth, destinés aux
+  utilisateurs ; `8080` est l'interface d'exploitation, qui affiche leurs adresses e-mail. Ne les
+  exposez pas au même public.
 - **Aucun secret ne sort.** Les colonnes `*_hash` (empreintes) et `*_sealed` (enveloppes
   chiffrées) ne sont jamais sélectionnées ni renvoyées ; un test parcourt les réponses de
   l'API pour s'en assurer.
@@ -83,18 +106,58 @@ Un compte dont aucun signal ne dépasse sa date de création est classé **jamai
 
 ## Démarrage rapide
 
-### Avec Docker Compose, à côté de garmin-mcp
-
 ```bash
-cp .env.example .env      # renseignez au minimum WEBUI_PASSWORD
-docker compose up -d      # l'interface écoute sur 127.0.0.1:8080
+cp .env.example .env      # renseignez au minimum WEBUI_PASSWORD et l'URL publique
+docker compose up -d --build
 ```
 
-Le volume de garmin-mcp est monté en lecture seule (`/data:ro`). garmin-mcp ouvrant sa base en
-mode WAL, SQLite ne peut pas lire directement une base WAL sans droit d'écriture sur le fichier
-`-shm` : l'interface bascule alors automatiquement sur une copie temporaire de la base et de son
-WAL (voir `app/db.py`), rafraîchie toutes les `WEBUI_SNAPSHOT_TTL_SECONDS`. Le mode réellement
-utilisé est affiché sous le titre et exposé par `/api/status`.
+L'image compile le serveur Go depuis `garmin-mcp/` puis l'embarque avec l'interface web.
+L'interface écoute sur `127.0.0.1:8080`, l'endpoint MCP sur `127.0.0.1:8180`. Au premier
+démarrage, le serveur crée sa clé maîtresse, migre sa base et commence à servir ; l'interface
+affiche « base introuvable » les quelques secondes qui précèdent.
+
+### Essai sur un poste, sans reverse proxy
+
+Le serveur d'autorisation **refuse de nommer un émetteur en clair** : l'URL publique doit être
+`https`, et aucun override ne change cela (`allow-insecure-http` ne lève que le contrôle sur
+l'écoute et l'origine). Pour un essai local, laissez le conteneur terminer le TLS avec un
+certificat auto-signé :
+
+```bash
+GARMIN_MCP_SELF_SIGNED_TLS=1 \
+GARMIN_MCP_PUBLIC_URL=https://127.0.0.1:8180/mcp \
+GARMIN_MCP_BIND_ADDRESS=127.0.0.1:8180 \
+GARMIN_MCP_OAUTH_CLIENTS='[{"id":"claude-desktop","name":"Claude Desktop","redirect-uris":["http://127.0.0.1:33418/callback"],"scopes":["garmin:read"],"resources":["https://127.0.0.1:8180/mcp"],"public":true}]' \
+WEBUI_PASSWORD=demo \
+docker compose up --build
+```
+
+Le certificat est écrit une fois dans `/data/tls` et n'est jamais remplacé. Il est fait pour un
+essai, pas pour une mise en production : un client MCP refusera une autorité inconnue.
+
+### En production
+
+Mettez un reverse proxy TLS devant, et donnez au serveur l'URL publique **de ce proxy** :
+
+| Réglage | Valeur |
+| ------- | ------ |
+| `GARMIN_MCP_PUBLIC_URL` | `https://mcp.exemple.fr/mcp` — l'URL que voient les clients. |
+| `GARMIN_MCP_BIND_ADDRESS` | `0.0.0.0:8180`, avec `GARMIN_MCP_ALLOW_INSECURE_HTTP=true` puisque le proxy termine le TLS. |
+| `GARMIN_MCP_TRUSTED_PROXY_CIDRS` | le réseau du proxy, sans quoi aucun en-tête `X-Forwarded-*` n'est cru. |
+| `GARMIN_MCP_OAUTH_CLIENTS` | au moins un client ; il n'y a pas d'enregistrement dynamique. |
+
+Alternative sans proxy : montez vos propres `GARMIN_MCP_TLS_CERT_FILE` et
+`GARMIN_MCP_TLS_KEY_FILE`, le serveur termine alors le TLS lui-même.
+
+**Sauvegarde.** La base et la clé maîtresse sont les deux moitiés d'une même sauvegarde : une base
+sans sa clé est illisible. Sauvegardez `/data` en entier, avec le processus arrêté ou via la
+sauvegarde en ligne de SQLite. Voir `garmin-mcp/docs/operations.md`.
+
+### Ne lancer qu'un service
+
+`RUN_SERVICES` vaut `les-deux` (défaut), `mcp` ou `webui`. Deux conteneurs issus de la même image,
+l'un en `mcp` et l'autre en `webui` sur le même volume, sont une configuration valide — le second
+bascule alors sur une copie temporaire de la base si le volume lui est monté en lecture seule.
 
 ### En local, sans conteneur
 
@@ -102,14 +165,48 @@ utilisé est affiché sous le titre et exposé par `/api/status`.
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
 
-# Pour essayer sans base de production :
+# Pour essayer l'interface sans base de production :
 python scripts/demo_database.py /tmp/demo.db
-
 WEBUI_DATABASE_PATH=/tmp/demo.db WEBUI_PASSWORD=demo python -m app
 # http://127.0.0.1:8080 — identifiants : admin / demo
 ```
 
+Le serveur MCP seul se compile comme n'importe quel programme Go :
+
+```bash
+cd garmin-mcp && go build ./cmd/garmin-mcp && ./garmin-mcp tools list | grep ' tools:'
+```
+
 ## Configuration
+
+### Serveur MCP
+
+Chaque réglage de garmin-mcp a une variable d'environnement : la clé en majuscules, tirets
+remplacés par des soulignés, préfixée `GARMIN_MCP_`. La liste complète est dans
+`garmin-mcp/docs/configuration.md`. Les principales pour cette image :
+
+| Variable | Défaut dans l'image | Rôle |
+| -------- | ------------------- | ---- |
+| `GARMIN_MCP_PUBLIC_URL` | — | **Obligatoire.** URL publique de l'endpoint MCP. Doit être `https`. |
+| `GARMIN_MCP_OAUTH_CLIENTS` | — | **Obligatoire.** Registre des clients OAuth, en JSON. |
+| `GARMIN_MCP_BIND_ADDRESS` | `0.0.0.0:8180` | écoute dans le conteneur. |
+| `GARMIN_MCP_ALLOW_INSECURE_HTTP` | `false` | autorise une écoute et une origine en clair hors boucle locale. Ne rend jamais un émetteur en clair acceptable. |
+| `GARMIN_MCP_TRUSTED_PROXY_CIDRS` | vide | réseaux dont les en-têtes `X-Forwarded-*` sont crus. |
+| `GARMIN_MCP_TLS_CERT_FILE` / `_KEY_FILE` | — | le serveur termine le TLS lui-même. |
+| `GARMIN_MCP_SELF_SIGNED_TLS` | `0` | ajout de cette image : fabrique un certificat auto-signé dans `/data/tls` pour un essai local. |
+| `GARMIN_MCP_DATABASE_PATH` | `/data/garmin.db` | base SQLite, partagée avec l'interface. |
+| `GARMIN_MCP_MASTER_KEY_FILE` | `/data/keys/key-v1.json` | la valeur sélectionne le répertoire ; le nom de fichier appartient au serveur. |
+| `GARMIN_MCP_STATE_DIR` | `/data` | état hors base. |
+| `GARMIN_MCP_ENABLE_WRITE_TOOLS` | `false` | outils d'écriture (nécessite aussi la portée OAuth correspondante). |
+
+### Conteneur
+
+| Variable | Défaut | Rôle |
+| -------- | ------ | ---- |
+| `RUN_SERVICES` | `les-deux` | `les-deux`, `mcp` ou `webui` : ce que l'entrypoint lance. |
+| `APP_USER` | `webui` | compte de service auquel l'entrypoint redescend après avoir ajusté `/data`. |
+
+### Interface web
 
 Toutes les variables sont facultatives sauf le secret d'accès.
 
@@ -153,13 +250,37 @@ curl -H "Authorization: Bearer $WEBUI_API_TOKEN" http://127.0.0.1:8080/api/stats
 ```bash
 pip install -r requirements-dev.txt
 ruff check . && ruff format --check .
-pytest -q
+pytest -q                       # interface web
+
+cd garmin-mcp && go test ./...  # serveur MCP (suite amont)
+
+shellcheck docker/entrypoint.sh
+docker build -t gamin-mcp-webui:test .
 ```
+
+La CI fait les quatre : lint et tests Python sur 3.11 et 3.12, compilation du serveur Go,
+`shellcheck` sur l'entrypoint, puis construction de l'image et démarrage réel du conteneur jusqu'à
+ce que sa sonde de santé passe.
 
 Les tests construisent une base SQLite au schéma de garmin-mcp (`tests/schema.sql`) peuplée de
 cas limites : compte actif, inactif, dormant, jamais connecté, compte dont les jetons ont été
 purgés. `tests/schema.sql` reproduit les tables et colonnes lues par `app/queries.py` ; si le
 schéma amont évolue, c'est le fichier à mettre à jour — un test échouera alors immédiatement.
+
+## Suivre l'amont
+
+`garmin-mcp/` est un `git subtree` du dépôt public. Pour récupérer une version plus récente :
+
+```bash
+git remote add garmin-mcp-upstream https://github.com/tamcore/garmin-mcp.git   # une seule fois
+git fetch garmin-mcp-upstream master
+git subtree pull --prefix=garmin-mcp garmin-mcp-upstream master --squash
+```
+
+Le sous-répertoire reste modifiable comme le reste du dépôt ; `git subtree push` renvoie ces
+modifications vers un fork amont si vous en tenez un. Après une mise à jour, vérifiez que
+`tests/schema.sql` correspond toujours aux migrations amont — c'est ce que testent les tests de
+l'interface.
 
 ## Compatibilité
 
@@ -170,5 +291,6 @@ et `audit_events`, et ne lit aucune colonne chiffrée.
 
 ## Licence
 
-MIT, comme le projet amont. garmin-mcp est un projet tiers ; ce dépôt n'en est ni un fork ni un
-produit officiel.
+MIT pour ce dépôt. `garmin-mcp/` est une copie du projet amont de Philipp Born, sous licence MIT
+également : sa licence et ses notices d'origine voyagent avec le code, dans `garmin-mcp/LICENSE` et
+`garmin-mcp/THIRD_PARTY_NOTICES.md`. Ce dépôt n'est pas un produit officiel du projet amont.
