@@ -62,6 +62,44 @@ so the token check does nothing, and `RemoteConfig.Approvals` is nil, so the log
 does not exist. It is accepted but unused in stdio mode, which has one account and it
 is the operator's own.
 
+## Telling the operator
+
+Nothing announces a held account by itself, so an operator who does not watch the web
+interface learns about it when the person complains. Configure an SMTP server and the
+deployment sends one e-mail per held account instead.
+
+| Setting | Meaning |
+| ------- | ------- |
+| `smtp-host` | the server. **Empty sends no mail**, which is the default and a complete configuration. |
+| `smtp-port` | `587` for STARTTLS (the default), `465` for implicit TLS. |
+| `smtp-user` | the account to authenticate as. With Gmail, the full address. |
+| `smtp-secret-file` | an **owner-only file** holding the secret. With Gmail, an application secret. |
+| `smtp-from` | the sender. Empty uses `smtp-user`, which Gmail requires anyway. |
+| `smtp-to` | who is told. At least one address once a host is set. |
+| `smtp-tls` | `starttls` or `implicit`. There is no cleartext mode. |
+| `dashboard-url` | a link to the web interface, put in the message. |
+
+The secret is deliberately **not** a setting of its own. `internal/config` refuses any
+key whose name carries a credential — a test enforces it — and this fork keeps that
+rule rather than working around it: only the path of a file is configured, exactly as
+for the master key, and `internal/securefile` refuses to read it if any other local
+account can.
+
+Three properties are worth knowing:
+
+- **A send never delays or fails a login.** `internal/cmd/heldaccounts.go` returns
+  immediately and does the work in a goroutine, on a context detached from the request
+  — the request's own context is cancelled the moment the page is written.
+- **One account is announced once per interval** (six hours by default). Someone who
+  retries a login three times produces one e-mail, and someone who comes back a week
+  later produces a reminder. A send that *fails* does not consume the interval.
+- **A half-filled configuration refuses to start.** Naming a server and forgetting the
+  recipients is a mistake an operator would only discover by not receiving anything.
+
+The message carries the account's e-mail address, its internal identifier and the
+instant — no Garmin data. The privacy notice says so, because that address then
+transits through a third party the operator chose.
+
 ## Who writes the decision
 
 The web interface in this repository, through `SetAccountApproval` in the store or,

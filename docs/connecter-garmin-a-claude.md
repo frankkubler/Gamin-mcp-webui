@@ -26,6 +26,8 @@ Le serveur tourne chez moi, donc autant être clair. Tu retrouveras tout ceci pe
 
 **Ce qui est enregistré**, en tout et pour tout : ton adresse email, un lien chiffré vers ton compte Garmin, tes jetons Garmin (chiffrés), les clients que tu as autorisés, le fait que tu as accepté la notice — et ma décision de validation, avec sa date.
 
+**Une notification m'est envoyée** quand ton compte se met en attente. Elle contient ton adresse email, l'identifiant interne de ton compte et l'heure — rien d'autre, et aucune donnée Garmin. Elle passe par le service d'envoi que j'utilise, qui est donc un tiers destinataire de ton adresse. Rien ne part une fois ton compte validé.
+
 **Tes données sont isolées des miennes et de celles des autres.** Chaque personne a son propre identifiant interne ; ton jeton ne donne accès qu'à ton compte.
 
 **L'accès est en lecture seule.** Les outils d'écriture et de suppression sont désactivés. Claude ne peut rien modifier ni effacer dans ton Garmin.
@@ -120,7 +122,9 @@ Ce que tu vas observer, et qui pourrait t'inquiéter : **Claude va probablement 
 
 Ce qu'il faut faire :
 
-1. **Préviens-moi** que tu viens de te connecter, si ce n'est pas déjà fait.
+1. **Je suis prévenu automatiquement** : le serveur m'envoie un e-mail dès qu'un compte
+   se met en attente. Un mot de ta part reste utile si c'est urgent, mais tu n'as rien
+   à faire pour que je le sache.
 2. Attends que je te confirme la validation (je vois ton compte apparaître « en attente » dans mon tableau de bord).
 3. **Reviens ensuite dans Claude et reclique sur Connect.** Cette fois ça passe, et la notice ne te sera pas redemandée.
 

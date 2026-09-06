@@ -23,7 +23,7 @@ import (
 // It is stored beside the digest so a report reads a date rather than 64 hex
 // characters. It is not what decides whether a person is asked again: the digest is.
 // Bump it when you edit pages/remote/privacy.html, so the two agree.
-const PrivacyNoticeVersion = "2026-09-06-fr"
+const PrivacyNoticeVersion = "2026-09-06-fr-2"
 
 // privacyNoticeFile is the embedded document whose bytes are the notice.
 const privacyNoticeFile = "pages/remote/privacy.html"
@@ -65,6 +65,19 @@ type Approvals interface {
 	// has decided about must report false, so a new account is held rather than
 	// let through.
 	AccountApproved(ctx context.Context, principal string) (bool, error)
+}
+
+// HeldAccounts is told when an account is turned away for want of an approval.
+//
+// The interface lives with its consumer and is deliberately narrow: this package
+// passes an opaque principal identifier and nothing else. It does not know whether
+// the notice goes to a mailbox, a log, or nowhere, and it never waits for it —
+// implementations must return promptly, doing any real work in the background.
+type HeldAccounts interface {
+	// AccountHeld reports that this account has just been held. It must not block
+	// the login, and it must not fail it: an implementation that cannot tell
+	// anyone swallows the problem after recording it.
+	AccountHeld(ctx context.Context, principal string)
 }
 
 // privacyNotice is the identity of the text this build serves.

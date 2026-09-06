@@ -309,7 +309,7 @@ func (s *RemoteServer) recordPrivacyConsent(
 	// decision about their access. A held account can therefore accept, its
 	// acceptance is recorded, and it still receives no token.
 	if context.pending {
-		s.holdAccount(w, r, session)
+		s.holdAccount(w, r, session, context.principal)
 		return false
 	}
 	return true
@@ -322,7 +322,7 @@ func (s *RemoteServer) recordPrivacyConsent(
 // person comes back through their client once the operator has decided. Whatever they
 // accepted a moment ago is already stored.
 func (s *RemoteServer) holdAccount(
-	w http.ResponseWriter, r *http.Request, session *remoteSession,
+	w http.ResponseWriter, r *http.Request, session *remoteSession, principal string,
 ) {
 	// The denial's redirect target is discarded on purpose — the person stays here,
 	// on a page that explains the wait, instead of being bounced back to a client
@@ -333,6 +333,13 @@ func (s *RemoteServer) holdAccount(
 	s.discard(session)
 	s.clearCookie(w)
 	s.log(r.Context(), "an account is waiting for the operator's approval")
+
+	// Telling the operator is the last thing done, and it cannot change what the
+	// person sees: the implementation returns promptly and swallows its own
+	// failures, because a mail server being down is not a reason to fail a login.
+	if s.held != nil {
+		s.held.AccountHeld(r.Context(), principal)
+	}
 
 	data := emptyRemoteData("")
 	data.Privacy = privacyState{Version: s.notice.version}

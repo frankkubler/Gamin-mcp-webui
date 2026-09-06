@@ -163,6 +163,10 @@ type RemoteConfig struct {
 	// operator asked for the gate.
 	Approvals Approvals
 
+	// HeldAccounts is told when an account is turned away for want of an approval.
+	// Nil tells nobody, which is a deployment that configured no notification.
+	HeldAccounts HeldAccounts
+
 	// TTL caps one browser session's lifetime. The effective deadline is the
 	// earlier of this and the authorization transaction's own expiry. Zero means
 	// DefaultTTL.
@@ -195,6 +199,7 @@ type RemoteServer struct {
 	authenticator  Authenticator
 	privacy        PrivacyConsents
 	approvals      Approvals
+	held           HeldAccounts
 	notice         privacyNotice
 	sessions       *sessionRegistry
 	pages          *pageSet
@@ -240,6 +245,7 @@ func NewRemote(cfg RemoteConfig) (*RemoteServer, error) {
 		authenticator:  cfg.Authenticator,
 		privacy:        cfg.PrivacyConsents,
 		approvals:      cfg.Approvals,
+		held:           cfg.HeldAccounts,
 		notice:         notice,
 		sessions:       newSessionRegistry(orInt(cfg.MaxSessions, DefaultMaxSessions)),
 		pages:          pages,

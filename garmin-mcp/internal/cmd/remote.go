@@ -329,8 +329,21 @@ func newRemoteLoginServer(
 	// the upstream behaviour, so the setting decides whether the seam exists at all
 	// rather than being re-read on every login.
 	var approvals loginweb.Approvals
+	var held loginweb.HeldAccounts
 	if parts.requireApproval {
 		approvals = parts.sqlite
+
+		// The notification only makes sense behind the gate: without it, no
+		// account is ever held and there is nothing to announce.
+		mailer, mailErr := newMailer(deps.cfg, deps.events)
+		if mailErr != nil {
+			return nil, mailErr
+		}
+		adapter, adapterErr := newHeldAccounts(parts.sqlite, mailer, deps.events)
+		if adapterErr != nil {
+			return nil, adapterErr
+		}
+		held = adapter
 	}
 
 	login, err := loginweb.NewRemote(loginweb.RemoteConfig{
@@ -338,6 +351,7 @@ func newRemoteLoginServer(
 		Authenticator:   logins,
 		PrivacyConsents: consents,
 		Approvals:       approvals,
+		HeldAccounts:    held,
 		Logger:          deps.events,
 	})
 	if err != nil {

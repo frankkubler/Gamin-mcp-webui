@@ -24,6 +24,8 @@ Celles-ci sont récupérées auprès de Garmin le temps d'une requête et transm
 directement au client qui les a demandées.</li>
 <li><strong>Jamais transmis au client :</strong> votre mot de passe Garmin et vos
 jetons Garmin. Un client reçoit un jeton valable pour ce serveur uniquement.</li>
+<li><strong>Transmis à l'exploitant :</strong> si votre compte attend sa validation, il
+peut en être averti par e-mail — votre adresse figure dans ce message, rien d'autre.</li>
 <li><strong>Vous pouvez y mettre fin :</strong> demandez à l'exploitant de révoquer
 l'accès d'un client ou de délier votre compte Garmin. Délier supprime les jetons
 Garmin conservés.</li>
@@ -93,6 +95,14 @@ lui de le décrire.</li>
 <li><strong>Ce que vous demandez à votre assistant.</strong> Le contenu de vos
 conversations avec un client MCP n'atteint jamais ce serveur.</li>
 </ul>
+
+<h3>Une notification à l'exploitant</h3>
+<p>Si l'exploitant a configuré un envoi d'e-mail, il reçoit un message au moment où
+votre compte est mis en attente de validation. Ce message contient votre adresse
+e-mail, l'identifiant interne de votre compte et la date ; rien d'autre, et aucune
+donnée Garmin. Il passe par le service d'envoi que l'exploitant a choisi, qui est donc
+un tiers destinataire de votre adresse. Rien n'est envoyé une fois votre compte
+validé.</p>
 
 <h3>Ce que reçoit un client que vous autorisez</h3>
 <p>Un jeton d'accès valable pour ce serveur seulement, limité aux permissions

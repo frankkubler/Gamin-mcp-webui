@@ -165,6 +165,11 @@ func TestAConsentThatCannotBeRecordedStopsTheGrant(t *testing.T) {
 // The approval gate: an account the operator has not decided about reaches no page
 // that could grant anything.
 
+// bandeauAttente is the banner the consent page shows a held account. The tests match
+// on it exactly rather than on "en attente de validation", which the privacy notice
+// also contains where it explains the wait in general.
+const bandeauAttente = "<strong>Votre compte est en attente de validation.</strong>"
+
 // fakeApprovals is the operator's decision under test control.
 type fakeApprovals struct {
 	approved map[string]bool
@@ -199,7 +204,7 @@ func TestAHeldAccountAcceptsTheNoticeAndStillGetsNothing(t *testing.T) {
 	}
 	// And the page says what will happen, rather than offering an Allow that
 	// silently grants nothing.
-	if !strings.Contains(page, "Votre compte est en attente de validation") {
+	if !strings.Contains(page, bandeauAttente) {
 		t.Error("the consent page does not say the account is waiting")
 	}
 
@@ -248,7 +253,7 @@ func TestOnceApprovedTheNoticeIsNotAskedAgain(t *testing.T) {
 	if strings.Contains(second, `name="privacy_accepted"`) {
 		t.Error("the notice was asked again after approval")
 	}
-	if strings.Contains(second, "en attente de validation") {
+	if strings.Contains(second, bandeauAttente) {
 		t.Error("the consent page still says the account is waiting")
 	}
 

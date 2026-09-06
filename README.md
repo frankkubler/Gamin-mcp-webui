@@ -190,6 +190,44 @@ Le réglage `GARMIN_MCP_REQUIRE_ACCOUNT_APPROVAL` (défaut `true`) commande la p
 `false`, on retrouve le comportement amont : un compte est utilisable dès que son login
 Garmin a réussi.
 
+### Être prévenu par e-mail
+
+Rien n'annonce un compte retenu : sans notification, on l'apprend quand la personne se
+plaint. Renseignez un serveur SMTP et le déploiement envoie un message par compte mis
+en attente.
+
+| Variable | Rôle |
+| -------- | ---- |
+| `GARMIN_MCP_SMTP_HOST` | le serveur. **Vide n'envoie rien**, c'est le défaut. |
+| `GARMIN_MCP_SMTP_PORT` | `587` en STARTTLS (défaut), `465` en TLS implicite. |
+| `GARMIN_MCP_SMTP_USER` | le compte d'envoi. Avec Gmail, l'adresse complète. |
+| `GARMIN_MCP_SMTP_SECRET_FILE` | **fichier** contenant le secret, lisible par le seul propriétaire. Avec Gmail, un mot de passe d'application. |
+| `GARMIN_MCP_SMTP_FROM` | l'expéditeur. Vide reprend `SMTP_USER`, ce que Gmail impose de toute façon. |
+| `GARMIN_MCP_SMTP_TO` | les destinataires, séparés par des virgules. |
+| `GARMIN_MCP_SMTP_TLS` | `starttls` ou `implicit`. Il n'y a pas de mode en clair. |
+| `GARMIN_MCP_DASHBOARD_URL` | lien vers l'interface, placé dans le message. |
+
+**Le secret n'est pas une variable d'environnement**, et ce n'est pas un oubli : le
+serveur amont refuse par principe qu'un identifiant soit configurable — un test le
+vérifie — donc seul le *chemin* d'un fichier l'est, comme pour la clé maîtresse. Le
+fichier doit appartenir au compte de service et n'être lisible que par lui, sinon le
+démarrage échoue. Avec Gmail, générez un **mot de passe d'application** (la validation
+en deux étapes doit être active sur le compte) et écrivez-le seul dans ce fichier.
+
+Trois garanties, chacune couverte par un test :
+
+- **Un envoi ne retarde ni ne fait échouer un login.** Il part en tâche de fond, sur un
+  contexte détaché de la requête, et ses erreurs sont journalisées puis abandonnées.
+- **Un compte n'est annoncé qu'une fois par intervalle** (six heures). Trois tentatives
+  de connexion font un seul message ; un retour une semaine plus tard fait un rappel.
+  Un envoi qui échoue ne consomme pas l'intervalle.
+- **Une configuration incomplète refuse de démarrer.** Nommer un serveur et oublier les
+  destinataires est une erreur qu'on ne découvrirait qu'en ne recevant rien.
+
+Le message contient l'adresse e-mail du compte, son identifiant interne et l'heure —
+aucune donnée Garmin. **La notice de confidentialité le dit**, puisque cette adresse
+transite alors par un tiers que vous avez choisi.
+
 ### L'interface écrit, mais une seule table
 
 C'est la seule exception à la lecture seule, et elle n'est pas une convention de code :

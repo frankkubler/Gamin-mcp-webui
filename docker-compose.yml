@@ -32,6 +32,16 @@ services:
       GARMIN_MCP_REGION: ${GARMIN_MCP_REGION:-garmin.com}
       GARMIN_MCP_ENABLE_WRITE_TOOLS: ${GARMIN_MCP_ENABLE_WRITE_TOOLS:-false}
       GARMIN_MCP_REQUIRE_ACCOUNT_APPROVAL: ${GARMIN_MCP_REQUIRE_ACCOUNT_APPROVAL:-true}
+
+      # Notification d'un compte en attente. Vide n'envoie rien.
+      GARMIN_MCP_SMTP_HOST: ${GARMIN_MCP_SMTP_HOST:-}
+      GARMIN_MCP_SMTP_PORT: ${GARMIN_MCP_SMTP_PORT:-587}
+      GARMIN_MCP_SMTP_USER: ${GARMIN_MCP_SMTP_USER:-}
+      GARMIN_MCP_SMTP_SECRET_FILE: ${GARMIN_MCP_SMTP_SECRET_FILE:-/run/secrets/smtp}
+      GARMIN_MCP_SMTP_FROM: ${GARMIN_MCP_SMTP_FROM:-}
+      GARMIN_MCP_SMTP_TO: ${GARMIN_MCP_SMTP_TO:-}
+      GARMIN_MCP_SMTP_TLS: ${GARMIN_MCP_SMTP_TLS:-starttls}
+      GARMIN_MCP_DASHBOARD_URL: ${GARMIN_MCP_DASHBOARD_URL:-}
       GARMIN_MCP_LOG_LEVEL: ${GARMIN_MCP_LOG_LEVEL:-info}
       GARMIN_MCP_LOG_FORMAT: ${GARMIN_MCP_LOG_FORMAT:-json}
 
@@ -48,6 +58,11 @@ services:
       # La base SQLite et la cle maitre. Sauvegardez les deux ensemble : une base
       # sans sa cle est illisible.
       - garmin-mcp-data:/data
+      # Le secret SMTP, si la notification est activee. Le fichier doit appartenir
+      # au compte de service (uid 10001) et n'etre lisible que par lui, sinon le
+      # demarrage echoue :
+      #   install -m 0600 -o 10001 -g 10001 smtp.secret ./secrets/smtp
+      # - ./secrets/smtp:/run/secrets/smtp:ro
 
     ports:
       - "127.0.0.1:8080:8080"   # interface web

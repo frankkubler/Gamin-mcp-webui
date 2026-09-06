@@ -183,6 +183,27 @@ type Config struct {
 	// the remote-only settings it carries a default of its own: refusing it would
 	// make every stdio start fail on a value nobody set.
 	RequireAccountApproval bool
+	// SMTP settings for the notification an operator receives when an account is
+	// waiting for their approval. SMTPHost empty is a complete configuration: no
+	// mail is sent, and the login flow is unchanged.
+	//
+	// The SMTP secret itself is deliberately not a setting. This project refuses to
+	// make any credential configurable — a flag is world-readable on the command
+	// line, and an environment variable leaks into a process dump — so only the
+	// path of an owner-only file is configured, exactly as for the master key.
+	SMTPHost       string
+	SMTPPort       int
+	SMTPUser       string
+	SMTPSecretFile string
+	SMTPFrom       string
+	SMTPTo         []string
+	SMTPTLS        string
+
+	// DashboardURL is the address of the web interface, put in that e-mail so the
+	// operator can act without hunting for it. It is display data and is never
+	// used to build a redirect or an issuer.
+	DashboardURL string
+
 	// TLSCertFile is the PEM certificate chain for the HTTPS listener.
 	TLSCertFile string
 	// TLSKeyFile is the PEM private key for the HTTPS listener.

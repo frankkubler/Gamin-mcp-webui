@@ -28,6 +28,14 @@ const (
 	keyOAuthClients           = "oauth-clients"
 	keyAllowInsecureHTTP      = "allow-insecure-http"
 	keyRequireApproval        = "require-account-approval"
+	keySMTPHost               = "smtp-host"
+	keySMTPPort               = "smtp-port"
+	keySMTPUser               = "smtp-user"
+	keySMTPSecretFile         = "smtp-secret-file"
+	keySMTPFrom               = "smtp-from"
+	keySMTPTo                 = "smtp-to"
+	keySMTPTLS                = "smtp-tls"
+	keyDashboardURL           = "dashboard-url"
 	keyTLSCertFile            = "tls-cert-file"
 	keyTLSKeyFile             = "tls-key-file"
 	keyDatabasePath           = "database-path"
@@ -148,6 +156,38 @@ var settingTable = [...]setting{
 	{
 		key: keyRequireApproval, flag: keyRequireApproval, kind: kindBool, def: true,
 		usage: "hold a new account until an operator approves it",
+	},
+	{
+		key: keySMTPHost, flag: keySMTPHost, kind: kindString, def: "",
+		usage: "SMTP server that announces an account waiting for approval; empty sends no mail",
+	},
+	{
+		key: keySMTPPort, flag: keySMTPPort, kind: kindInt, def: 587,
+		usage: "SMTP submission port (587 for STARTTLS, 465 for implicit TLS)",
+	},
+	{
+		key: keySMTPUser, flag: keySMTPUser, kind: kindString, def: "",
+		usage: "SMTP account to authenticate as; with Gmail, the full address",
+	},
+	{
+		key: keySMTPSecretFile, flag: keySMTPSecretFile, kind: kindString, def: "",
+		usage: "owner-only file holding the SMTP secret; with Gmail, an application secret",
+	},
+	{
+		key: keySMTPFrom, flag: keySMTPFrom, kind: kindString, def: "",
+		usage: "sender address; empty uses the SMTP username",
+	},
+	{
+		key: keySMTPTo, flag: keySMTPTo, kind: kindStringSlice, def: nil,
+		usage: "who is told that an account is waiting",
+	},
+	{
+		key: keySMTPTLS, flag: keySMTPTLS, kind: kindString, def: "starttls",
+		usage: "starttls or implicit; there is no cleartext mode",
+	},
+	{
+		key: keyDashboardURL, flag: keyDashboardURL, kind: kindString, def: "",
+		usage: "link to the web interface, put in the notification e-mail",
 	},
 	{
 		key: keyTLSCertFile, flag: keyTLSCertFile, kind: kindString, def: "",
