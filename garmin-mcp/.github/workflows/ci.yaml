@@ -1,0 +1,734 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  # The release workflow re-runs every gate before it publishes anything.
+  workflow_call:
+
+permissions:
+  contents: read
+
+# The group name is a literal, not github.workflow. A called workflow inherits
+# the caller's github.workflow, so sharing that expression with release.yaml made
+# both resolve to the same group and the release run cancelled itself before it
+# could publish.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Pinned tool versions. CI must never resolve a floating "latest".
+  GOLANGCI_LINT_VERSION: v2.13.1
+  GORELEASER_VERSION: v2.17.1
+  GOVULNCHECK_VERSION: v1.7.0
+
+jobs:
+  verify:
+    name: Verify tree
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+
+      - name: Verify gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "${unformatted}" ]; then
+            echo "::error::gofmt reported unformatted files:"
+            echo "${unformatted}"
+            gofmt -d .
+            exit 1
+          fi
+
+      - name: Verify go mod tidy
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      - name: go vet
+        run: go vet ./...
+
+      # go vet uses the host GOOS, and the build matrix runs `go build`, which
+      # never compiles _test.go. Without this, platform-specific code and its
+      # tests are only ever type-checked for whichever GOOS the runner happens to
+      # be.
+      - name: go vet for every supported GOOS
+        run: |
+          for os in linux darwin; do
+            echo "== GOOS=${os}"
+            GOOS="${os}" go vet ./... || exit 1
+          done
+
+  # Dependency review is an enforceable PR gate, not only a repository setting.
+  # It blocks a pull request that introduces a vulnerable or disallowed-license
+  # dependency. It only runs on pull_request, because the action needs a base and
+  # a head to compare.
+  dependency-review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: low
+          # Matches the licenses recorded in docs/dependencies.md. A dependency
+          # under anything else needs a decision, not an automatic pass.
+          allow-licenses: Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MIT
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+
+      # Verifies the `formatters` block of .golangci.yml (gofmt + goimports) and
+      # fails on any difference. Reuses the binary the action just installed.
+      - name: Verify formatters (gofmt, goimports)
+        run: golangci-lint fmt --diff
+
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+
+      - name: go test -race with coverage
+        run: go test -race -count=1 -covermode=atomic -coverprofile=cover.out ./...
+
+      - name: Coverage summary
+        run: go tool cover -func=cover.out
+
+      # The 80% rule is documented, so it is enforced per package rather than as
+      # one repository average: an average lets a well-tested package pay for a
+      # neglected one, and the number then falls without anything failing.
+      #
+      # The exception list is explicit and is checked in both directions. A
+      # package that has since reached the floor must be removed from it, and a
+      # name that is not in the profile fails too, so an exception cannot outlive
+      # its reason or survive a rename as a silent blanket skip.
+      - name: Enforce the per-package coverage floor
+        env:
+          COVERAGE_FLOOR: "80"
+          # cmd/garmin-mcp is the process entry point: it owns the injected build
+          #   identity, the exit status and the tool seams, and every behavior it
+          #   wires lives under internal/, where it is tested without a binary.
+          #   The e2e job runs the built command itself.
+          # internal/garmin/auth is exercised through the fake Garmin service, and
+          #   that suite is tagged fakegarmin, so this untagged profile does not
+          #   see it. The test-fakegarmin job runs and reports it.
+          COVERAGE_EXCEPTIONS: >-
+            github.com/tamcore/garmin-mcp/cmd/garmin-mcp
+            github.com/tamcore/garmin-mcp/internal/garmin/auth
+        run: |
+          set -o pipefail
+          awk -v floor="${COVERAGE_FLOOR}" -v except="${COVERAGE_EXCEPTIONS}" '
+            BEGIN {
+              count = split(except, listed, " ")
+              for (i = 1; i <= count; i++) if (listed[i] != "") allowed[listed[i]] = 1
+            }
+            # A profile line is "package/file.go:from.col,to.col statements count".
+            NR > 1 {
+              file = $1
+              sub(/:[0-9]+\.[0-9]+,[0-9]+\.[0-9]+$/, "", file)
+              pkg = file
+              sub(/\/[^\/]*$/, "", pkg)
+              if (!(pkg in total)) { total[pkg] = 0; packages++ }
+              total[pkg] += $2
+              if ($3 > 0) covered[pkg] += $2
+            }
+            END {
+              if (packages == 0) {
+                print "::error::the coverage profile lists no package; this gate would pass vacuously"
+                exit 1
+              }
+              failed = 0
+              for (pkg in total) {
+                if (total[pkg] == 0) continue
+                pct = 100 * covered[pkg] / total[pkg]
+                printf "%-56s %5.1f%%%s\n", pkg, pct, (pkg in allowed) ? "  listed as an exception" : ""
+                if (pct < floor && !(pkg in allowed)) {
+                  printf "::error::%s is at %.1f%%, under the %s%% floor\n", pkg, pct, floor
+                  failed = 1
+                }
+                if (pct >= floor && (pkg in allowed)) {
+                  printf "::error::%s reached %.1f%% and must leave the exception list\n", pkg, pct
+                  failed = 1
+                }
+              }
+              for (pkg in allowed) {
+                if (!(pkg in total)) {
+                  printf "::error::the exception %s is not in the profile; drop it or fix the name\n", pkg
+                  failed = 1
+                }
+              }
+              exit failed
+            }
+          ' cover.out | sort
+
+  test-fakegarmin:
+    name: Fake-Garmin integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+
+      # A tagged job that runs zero tagged tests reports success and proves
+      # nothing. Counting files is not enough either: an empty tagged file, or a
+      # suite where every test skips, satisfies a file count while proving
+      # nothing. Require a minimum number of tests that actually PASSED, read
+      # from the test2json stream.
+      - name: go test -tags=fakegarmin with coverage
+        run: |
+          set -o pipefail
+          go test -json -race -count=1 -tags=fakegarmin \
+            -covermode=atomic -coverprofile=cover-fakegarmin.out ./... | tee fakegarmin.json
+
+      # Counting every passing test would prove nothing, because the untagged
+      # tests compile under the tag as well. Take the test names declared in
+      # tagged files and require each one to appear as a pass in the run, so a
+      # deleted, renamed, emptied or universally skipped tagged test fails here.
+      - name: Assert the tagged suite really ran
+        run: |
+          files=$(grep -rl '^//go:build fakegarmin' --include='*_test.go' . || true)
+          if [ -z "${files}" ]; then
+            echo "::error::no fakegarmin-tagged test files found; this job would pass vacuously"
+            exit 1
+          fi
+
+          expected=$(printf '%s\n' "${files}" | xargs grep -h '^func Test' \
+            | sed -E 's/^func (Test[A-Za-z0-9_]*).*/\1/' | sort -u)
+          if [ -z "${expected}" ]; then
+            echo "::error::tagged files declare no test functions"
+            exit 1
+          fi
+
+          jq -r 'select(.Action=="pass" and (.Test // "") != "") | .Test' fakegarmin.json | sort -u > passed.txt
+
+          missing=0
+          for name in ${expected}; do
+            if ! grep -qx "${name}" passed.txt; then
+              echo "::error::tagged test ${name} did not pass"
+              missing=$((missing + 1))
+            fi
+          done
+
+          echo "tagged tests declared: $(echo "${expected}" | wc -w), missing: ${missing}"
+          if [ "${missing}" -ne 0 ]; then
+            exit 1
+          fi
+
+      # Packages whose behavior is exercised mainly through the fake service are
+      # undercounted by the untagged job, so report the tagged number too.
+      - name: Coverage summary
+        run: go tool cover -func=cover-fakegarmin.out | tail -20
+
+  e2e:
+    name: E2E tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+
+      # -race here too: the brief requires it on every Go test invocation, and
+      # the suite passes with it.
+      - name: go test -tags=e2e
+        run: |
+          set -o pipefail
+          go test -json -race -count=1 -tags=e2e -timeout=10m ./e2e/... | tee e2e.json
+
+      # A file count would accept a file the e2e tag excludes, or a suite where
+      # every test skips. Count tests that passed instead.
+      # Every test declared under ./e2e must pass. A file count would accept a
+      # file the e2e tag excludes, or a suite where every test skips.
+      - name: Assert the E2E suite really ran
+        run: |
+          expected=$(grep -rh '^func Test' --include='*_test.go' ./e2e | sed -E 's/^func (Test[A-Za-z0-9_]*).*/\1/' | sort -u)
+          if [ -z "${expected}" ]; then
+            echo "::error::no tests declared under ./e2e; this job would pass vacuously"
+            exit 1
+          fi
+
+          jq -r 'select(.Action=="pass" and (.Test // "") != "") | .Test' e2e.json | sort -u > passed.txt
+
+          missing=0
+          for name in ${expected}; do
+            if ! grep -qx "${name}" passed.txt; then
+              echo "::error::E2E test ${name} did not pass"
+              missing=$((missing + 1))
+            fi
+          done
+
+          echo "E2E tests declared: $(echo "${expected}" | wc -w), missing: ${missing}"
+          if [ "${missing}" -ne 0 ]; then
+            exit 1
+          fi
+
+  fuzz-smoke:
+    name: Fuzz smoke
+    runs-on: ubuntu-latest
+    # Bounds a hung dependency download or a fuzz target that never returns
+    # control (a hang is a real fuzz finding, not only a crash). 7 targets at
+    # The race detector is deliberately NOT enabled here. It slows fuzzing by
+    # roughly an order of magnitude, and on a GitHub runner that made the engine
+    # miss its own shutdown deadline and report "context deadline exceeded" as a
+    # failure — a red build caused by timing rather than by a finding, which is
+    # worse than no gate. The race detector still covers this code in the unit,
+    # fakegarmin and e2e jobs, which run every one of these parsers.
+    # The per-target budget is counted in executions rather than seconds, so a
+    # loaded runner cannot turn this gate red without a finding; see the step's
+    # own comment. The job timeout below is the wall-clock backstop instead.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+
+      # Every declared FuzzX target gets a bounded smoke run: seconds, not
+      # minutes, so a crasher is caught without turning this into a slow or
+      # flaky gate. Targets are discovered from source rather than hand-listed,
+      # so a new fuzz function is picked up without a workflow edit, and a
+      # tagged-suite-style vacuous pass (no targets found) fails loudly.
+      #
+      # Discovery is tag-aware on purpose: this step runs `go test` with no
+      # -tags, so a FuzzX target declared in a fakegarmin/e2e/garminlive-tagged
+      # file would be found by a plain grep but is never actually compiled,
+      # and `go test -fuzz` reports "no fuzz tests to run" and fails the job
+      # rather than skipping the way an untagged discovery gap should. Any
+      # file carrying a `//go:build` line is excluded from discovery for
+      # exactly that reason. A fuzz target belongs in an untagged file; adding
+      # one to a tagged file makes it invisible here rather than failing here.
+      # The budget is a number of EXECUTIONS, not a duration, and that is the
+      # whole point. With -fuzztime=10s this job failed on a loaded runner with
+      # "context deadline exceeded" at 10.11s: not a crasher, the engine missing
+      # its own shutdown deadline. A wall-clock budget makes the gate's verdict
+      # depend on how busy the runner is, and a gate that goes red for timing is
+      # one people learn to ignore — which is how a real finding gets waved
+      # through. An execution budget cannot expire late. Roughly 150k execs is
+      # what 10s bought on the runners that passed, so coverage is comparable.
+      - name: Run every fuzz target for a bounded smoke duration
+        env:
+          FUZZ_SMOKE_EXECS: 150000x
+        run: |
+          set -o pipefail
+          mapfile -t candidates < <(grep -rl '^func Fuzz' --include='*_test.go' .)
+          files=()
+          for candidate in "${candidates[@]}"; do
+            if ! grep -q '^//go:build' "${candidate}"; then
+              files+=("${candidate}")
+            fi
+          done
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::no fuzz targets found; this job would pass vacuously"
+            exit 1
+          fi
+
+          ran=0
+          for file in "${files[@]}"; do
+            dir="./$(dirname "${file}")"
+            for name in $(grep -oh '^func Fuzz[A-Za-z0-9_]*' "${file}" | sed -E 's/^func //'); do
+              echo "== ${name} (${dir}) =="
+              go test -run='^$' -fuzz="^${name}\$" -fuzztime="${FUZZ_SMOKE_EXECS}" "${dir}"
+              ran=$((ran + 1))
+            done
+          done
+          echo "fuzz targets run: ${ran}"
+
+  reproducible-build:
+    name: Reproducible build
+    runs-on: ubuntu-latest
+    # Two independent full compiles of the same commit; bounds a hung module
+    # download or compiler invocation rather than the default six hours.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+
+      # Two independent builds of the same commit, each with its own GOCACHE so
+      # the second is a real recompile rather than a cache hit. -trimpath drops
+      # the build directory from the binary, and the ldflags are fixed literals
+      # rather than the real VCS state, so this check does not depend on which
+      # commit or working tree it runs against; GoReleaser supplies the real
+      # version and commit at release time (see .goreleaser.yaml). Any other
+      # source of nondeterminism — build ID, timestamp, map iteration order —
+      # still shows up as a hash mismatch, which is what this gate is for.
+      - name: Build twice from independent caches and compare
+        env:
+          CGO_ENABLED: "0"
+          LDFLAGS: -s -w -X main.version=repro-check -X main.commit=0000000000000000000000000000000000000000
+        run: |
+          set -o pipefail
+          GOCACHE="${RUNNER_TEMP}/gocache-1" go build -trimpath -ldflags "${LDFLAGS}" -o "${RUNNER_TEMP}/build-1/garmin-mcp" ./cmd/garmin-mcp
+          GOCACHE="${RUNNER_TEMP}/gocache-2" go build -trimpath -ldflags "${LDFLAGS}" -o "${RUNNER_TEMP}/build-2/garmin-mcp" ./cmd/garmin-mcp
+
+          hash1="$(sha256sum "${RUNNER_TEMP}/build-1/garmin-mcp" | cut -d' ' -f1)"
+          hash2="$(sha256sum "${RUNNER_TEMP}/build-2/garmin-mcp" | cut -d' ' -f1)"
+          echo "build 1: ${hash1}"
+          echo "build 2: ${hash2}"
+
+          if [ "${hash1}" != "${hash2}" ]; then
+            echo "::error::two builds of the same commit produced different binaries"
+            exit 1
+          fi
+
+  vulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@${{ env.GOVULNCHECK_VERSION }}
+
+      - name: govulncheck
+        run: govulncheck ./...
+
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goos: [linux, darwin]
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+
+      - name: go build
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: go build ./...
+
+  goreleaser:
+    name: GoReleaser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+
+      - name: goreleaser check
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          version: ${{ env.GORELEASER_VERSION }}
+          args: check
+
+      # Snapshot build only: signing, SBOMs and image publishing need release
+      # credentials and are exercised by the release workflow.
+      - name: goreleaser snapshot
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          version: ${{ env.GORELEASER_VERSION }}
+          args: release --snapshot --clean --skip=sign,docker
+
+  container:
+    name: Container build and hardening smoke test
+    runs-on: ubuntu-latest
+    # The start-up steps below poll a running server and wait on a deliberate
+    # failure, so this job is the one that can stall rather than fail. Without a
+    # bound a wedged daemon burns the runner's default six hours.
+    timeout-minutes: 20
+    env:
+      # Pinned by digest, not just tag: both are helper images used only to chown a
+      # volume and to poll the server from inside its network namespace, never
+      # shipped, but a floating tag is still an unpinned supply-chain input.
+      BUSYBOX_IMAGE: busybox:1.36.1@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+      CURL_IMAGE: curlimages/curl:8.11.1@sha256:c1fe1679c34d9784c1b0d1e5f62ac0a79fca01fb6377cdd33e90473c6f9f9a69
+      # One public, loopback-only OAuth client, registered purely so the
+      # streamable-http transport's mandatory-registry check passes. Nothing in
+      # this smoke test performs an OAuth flow.
+      SMOKE_OAUTH_CLIENT: >-
+        [{"id":"ci-smoke-client","name":"CI Smoke Test",
+        "redirect-uris":["https://127.0.0.1/callback"],"scopes":["garmin:read"],
+        "resources":["https://127.0.0.1:8080"],"public":true}]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+
+      - name: Build linux/amd64 binary
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          mkdir -p image-context/linux/amd64
+          go build -trimpath -ldflags '-s -w' \
+            -o image-context/linux/amd64/garmin-mcp ./cmd/garmin-mcp
+
+          # The image carries its licence and notices, so the build context has to
+          # hold them too. GoReleaser declares them as extra files for the same
+          # reason; this job builds its own context and needs its own copy.
+          cp LICENSE THIRD_PARTY_NOTICES.md image-context/
+
+      - name: Build image
+        run: |
+          docker build \
+            --build-arg TARGETPLATFORM=linux/amd64 \
+            -f Dockerfile \
+            -t garmin-mcp:ci \
+            image-context
+
+      - name: Assert the licence and notices ship in the image
+        run: |
+          # The runtime image is distroless and has no shell, so the files are
+          # read by exporting the filesystem rather than by running anything.
+          container="$(docker create garmin-mcp:ci)"
+          trap 'docker rm -f "${container}" >/dev/null' EXIT
+          docker export "${container}" >image.tar
+
+          for file in LICENSE THIRD_PARTY_NOTICES.md; do
+            # Extracted and measured rather than read off `tar -tv`, whose column
+            # layout differs between GNU and BSD tar.
+            if ! tar -xOf image.tar "licenses/garmin-mcp/${file}" >extracted; then
+              echo "::error::${file} is missing from the runtime image"
+              exit 1
+            fi
+            size="$(wc -c <extracted)"
+            echo "${file}: ${size} bytes"
+            if [ "${size}" -lt 100 ]; then
+              echo "::error::${file} is truncated in the runtime image"
+              exit 1
+            fi
+          done
+
+      - name: Assert numeric nonroot user
+        run: |
+          user="$(docker inspect -f '{{ .Config.User }}' garmin-mcp:ci)"
+          echo "image user: ${user}"
+          test "${user}" = "65532:65532"
+
+      - name: Assert no shell in image
+        run: |
+          for shell in /bin/sh /bin/bash /busybox/sh; do
+            if docker run --rm --entrypoint "${shell}" garmin-mcp:ci -c true 2>/dev/null; then
+              echo "::error::unexpected shell ${shell} present in runtime image"
+              exit 1
+            fi
+          done
+
+      - name: Run hardened smoke test
+        run: |
+          docker run --rm \
+            --read-only \
+            --user 65532:65532 \
+            --cap-drop=ALL \
+            --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            garmin-mcp:ci
+
+      # Everything below proves the shape this image is about to run in: a
+      # streamable-http deployment with a read-only root filesystem, a non-root
+      # user, and a PVC-like mounted volume for state. A build that passes the
+      # hardening checks above but cannot actually start, cannot write its
+      # database and key, or hangs instead of failing when the volume is
+      # unwritable is exactly the failure a first real rollout would hit.
+
+      - name: Generate a smoke-test TLS certificate
+        run: |
+          # The authorization server refuses to name a cleartext issuer at any
+          # origin, loopback included, so even this smoke-only deployment needs a
+          # certificate. It is self-signed and thrown away at the end of the job;
+          # curl trusts it explicitly with -k rather than needing it installed.
+          mkdir -p "${RUNNER_TEMP}/garmin-mcp-certs"
+          openssl req -x509 -newkey rsa:2048 \
+            -keyout "${RUNNER_TEMP}/garmin-mcp-certs/tls.key" \
+            -out "${RUNNER_TEMP}/garmin-mcp-certs/tls.crt" \
+            -days 2 -nodes -subj "/CN=127.0.0.1" \
+            -addext "subjectAltName=IP:127.0.0.1"
+          chmod 644 "${RUNNER_TEMP}"/garmin-mcp-certs/tls.*
+
+      - name: Prepare a writable /data volume
+        run: |
+          # A fresh PVC is owned by root until something chowns it; a real
+          # deployment does this with fsGroup or an init container. The chown
+          # itself has to run as root, so this one step is the only one in the
+          # whole job that is not the nonroot user.
+          docker volume create garmin-mcp-ci-data
+          docker run --rm -v garmin-mcp-ci-data:/data "${BUSYBOX_IMAGE}" \
+            chown 65532:65532 /data
+
+      - name: Start the server hardened, with the volume mounted
+        run: |
+          docker run -d --name garmin-mcp-ci-serve \
+            --read-only \
+            --user 65532:65532 \
+            --cap-drop=ALL \
+            --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            -v garmin-mcp-ci-data:/data \
+            -v "${RUNNER_TEMP}/garmin-mcp-certs:/certs:ro" \
+            -e GARMIN_MCP_TRANSPORT=streamable-http \
+            -e GARMIN_MCP_BIND_ADDRESS=0.0.0.0:8080 \
+            -e GARMIN_MCP_PUBLIC_URL=https://127.0.0.1:8080 \
+            -e GARMIN_MCP_TLS_CERT_FILE=/certs/tls.crt \
+            -e GARMIN_MCP_TLS_KEY_FILE=/certs/tls.key \
+            -e GARMIN_MCP_DATABASE_PATH=/data/garmin-mcp.db \
+            -e GARMIN_MCP_STATE_DIR=/data \
+            -e GARMIN_MCP_MASTER_KEY_FILE=/data/keys/key-v1.json \
+            -e GARMIN_MCP_OAUTH_CLIENTS="${SMOKE_OAUTH_CLIENT}" \
+            garmin-mcp:ci serve
+
+      - name: Wait for the server to report ready, not merely alive
+        run: |
+          # The probe is reached from a second container sharing the first one's
+          # network namespace: the image ships no shell and no curl, and the
+          # bound address is 0.0.0.0, which docker's own port publishing would
+          # only forward from a host-side mapping this step does not need.
+          ready=""
+          for _ in $(seq 1 30); do
+            code="$(timeout --kill-after=5s 15 docker run --rm \
+              --network container:garmin-mcp-ci-serve "${CURL_IMAGE}" \
+              -sk --max-time 5 -o /dev/null -w '%{http_code}' \
+              https://127.0.0.1:8080/readyz || echo 000)"
+            if [ "${code}" = "200" ]; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ -z "${ready}" ]; then
+            echo "::error::the server never reported ready within 30s"
+            docker logs garmin-mcp-ci-serve
+            exit 1
+          fi
+
+          live="$(timeout --kill-after=5s 15 docker run --rm \
+            --network container:garmin-mcp-ci-serve "${CURL_IMAGE}" \
+            -sk --max-time 5 -o /dev/null -w '%{http_code}' \
+            https://127.0.0.1:8080/livez)"
+          if [ "${live}" != "200" ]; then
+            echo "::error::readyz reported ready but livez answered ${live}"
+            exit 1
+          fi
+
+      - name: Assert the database and key exist under the volume, owner-only
+        run: |
+          docker run --rm -v garmin-mcp-ci-data:/data "${BUSYBOX_IMAGE}" sh -c '
+            set -e
+            for target in /data/garmin-mcp.db /data/keys/key-v1.json; do
+              if [ ! -f "${target}" ]; then
+                echo "::error::${target} was not created under the mounted volume"
+                exit 1
+              fi
+              mode="$(stat -c %a "${target}")"
+              owner="$(stat -c %u:%g "${target}")"
+              echo "${target}: mode=${mode} owner=${owner}"
+              if [ "${mode}" != "600" ]; then
+                echo "::error::${target} is not owner-only (mode ${mode})"
+                exit 1
+              fi
+              if [ "${owner}" != "65532:65532" ]; then
+                echo "::error::${target} is not owned by the nonroot uid/gid (owner ${owner})"
+                exit 1
+              fi
+            done
+          '
+
+      - name: Stop the streamable-http smoke test
+        if: always()
+        run: |
+          docker logs garmin-mcp-ci-serve || true
+          docker rm -f garmin-mcp-ci-serve >/dev/null 2>&1 || true
+          docker volume rm garmin-mcp-ci-data >/dev/null 2>&1 || true
+
+      - name: Assert start-up fails closed when /data is not writable
+        run: |
+          # Fail-closed is the property that matters: a rollout onto a read-only
+          # PVC must refuse honestly and promptly, never start up broken and
+          # never hang waiting for state it can never create.
+          docker volume create garmin-mcp-ci-data-ro
+          docker run --rm -v garmin-mcp-ci-data-ro:/data "${BUSYBOX_IMAGE}" \
+            chown 65532:65532 /data
+
+          set +e
+          timeout --kill-after=5s 30 docker run --name garmin-mcp-ci-fail \
+            --read-only \
+            --user 65532:65532 \
+            --cap-drop=ALL \
+            --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            -v garmin-mcp-ci-data-ro:/data:ro \
+            -v "${RUNNER_TEMP}/garmin-mcp-certs:/certs:ro" \
+            -e GARMIN_MCP_TRANSPORT=streamable-http \
+            -e GARMIN_MCP_BIND_ADDRESS=0.0.0.0:8080 \
+            -e GARMIN_MCP_PUBLIC_URL=https://127.0.0.1:8080 \
+            -e GARMIN_MCP_TLS_CERT_FILE=/certs/tls.crt \
+            -e GARMIN_MCP_TLS_KEY_FILE=/certs/tls.key \
+            -e GARMIN_MCP_DATABASE_PATH=/data/garmin-mcp.db \
+            -e GARMIN_MCP_STATE_DIR=/data \
+            -e GARMIN_MCP_MASTER_KEY_FILE=/data/keys/key-v1.json \
+            -e GARMIN_MCP_OAUTH_CLIENTS="${SMOKE_OAUTH_CLIENT}" \
+            garmin-mcp:ci serve
+          ec=$?
+          set -e
+
+          echo "exit code: ${ec}"
+          logs="$(docker logs garmin-mcp-ci-fail 2>&1 || true)"
+          echo "${logs}"
+          docker rm -f garmin-mcp-ci-fail >/dev/null 2>&1 || true
+          docker volume rm garmin-mcp-ci-data-ro >/dev/null 2>&1 || true
+
+          # Every rejected status below would otherwise read as the refusal this
+          # step is asserting, which is how a negative test passes vacuously: an
+          # image whose binary cannot execute at all never reaches the read-only
+          # /data it is supposed to refuse.
+          case "${ec}" in
+            0)
+              echo "::error::the server started successfully despite a read-only /data"
+              exit 1 ;;
+            124|137)
+              echo "::error::the server hung instead of failing within 30s when /data was read-only"
+              exit 1 ;;
+            125)
+              echo "::error::docker itself failed to run the container, so the refusal was never tested"
+              exit 1 ;;
+            126|127)
+              echo "::error::the image's entrypoint is not executable or not found, so the refusal was never tested"
+              exit 1 ;;
+          esac
+
+          # The exit status alone only proves it failed, not that it failed for
+          # the right reason. A server that refused for an unrelated cause --
+          # a bad certificate, a malformed client registration -- would satisfy
+          # every check above while proving nothing about a read-only /data.
+          case "${logs}" in
+            *"read-only file system"*|*"read-only filesystem"*) ;;
+            *)
+              echo "::error::the server failed, but its output does not name a read-only filesystem, so the refusal was for some other cause"
+              exit 1 ;;
+          esac

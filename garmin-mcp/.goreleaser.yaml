@@ -1,0 +1,124 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: garmin-mcp
+
+# No `before` hooks on purpose: CI already verifies `gofmt`, `goimports` and
+# `go mod tidy` cleanliness, so the release must never mutate the tagged tree.
+
+builds:
+  - id: garmin-mcp
+    main: ./cmd/garmin-mcp
+    binary: garmin-mcp
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: default
+    ids:
+      - garmin-mcp
+    formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # Explicit list: without it GoReleaser applies its own default set, which
+    # does not carry the notices. Both files are a distribution condition of
+    # the MIT licence and of the upstream MIT material recorded in the notices,
+    # so every archive must contain them.
+    files:
+      - LICENSE
+      - THIRD_PARTY_NOTICES.md
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_SHA256SUMS"
+  algorithm: sha256
+
+# Keyless cosign signature over the checksum file, in cosign v3's bundle format.
+#
+# The bundle is one self-describing file carrying both the signature and the
+# certificate, which is why there is no separate `certificate:` here any more.
+# cosign v3 defaults to that format and REFUSES the v2 flags: passing
+# --output-signature/--output-certificate fails with "must specify --bundle with
+# --new-bundle-format", which is exactly how the v0.0.1 release first broke —
+# the pinned cosign moved from v2.6.5 to v3.1.3 and this block did not.
+#
+# Verify a download with:
+#   cosign verify-blob --bundle garmin-mcp_<version>_SHA256SUMS.bundle \
+#     --certificate-identity-regexp 'https://github.com/tamcore/garmin-mcp/.*' \
+#     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+#     garmin-mcp_<version>_SHA256SUMS
+signs:
+  - id: cosign-checksums
+    cmd: cosign
+    artifacts: checksum
+    signature: "${artifact}.bundle"
+    output: true
+    args:
+      - sign-blob
+      - "--yes"
+      - "--bundle=${signature}"
+      - "${artifact}"
+
+
+dockers_v2:
+  - id: ghcr
+    ids:
+      - garmin-mcp
+    images:
+      - "ghcr.io/tamcore/garmin-mcp"
+    dockerfile: Dockerfile
+    # The Dockerfile COPYs both files, so they must be in the build context
+    # that GoReleaser assembles; only the binaries are there by default.
+    extra_files:
+      - LICENSE
+      - THIRD_PARTY_NOTICES.md
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    tags:
+      - "{{ .Tag }}"
+      - "{{ .Major }}.{{ .Minor }}"
+      - latest
+    labels:
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+      org.opencontainers.image.name: "{{ .ProjectName }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.source: "{{ .GitURL }}"
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    # Documentation is listed rather than excluded: a release whose substance is a
+    # corrected contract would otherwise publish empty notes.
+    - title: Documentation
+      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: Other changes
+      order: 99
+
+release:
+  draft: false
+  prerelease: auto
