@@ -114,3 +114,20 @@ sqlite3 /data/garmin.db \
 ```
 
 Removing the row puts the account back to pending.
+
+## What proves it
+
+`internal/store/sqlite_approvals_test.go` covers the store, and
+`internal/loginweb/remoteprivacy_test.go` covers the login pages, both against fakes.
+The property those two cannot state is the one that matters most — that the gate is on
+the token *read* rather than on the login, so a token already minted stops working —
+and it is proven end to end by `e2e/accountapproval_test.go`: two principals seeded
+before the process starts, one approved and one not, both codes redeemed by the real
+`/token` endpoint, and only the approved one's token accepted by the real MCP endpoint.
+Removing the guard in `sqlite_tokenread.go` makes that test fail, which was checked by
+doing it.
+
+The e2e fixtures seed an approval alongside every principal (`seedApprovedPrincipal` in
+`e2e/seed_test.go`) for the same reason: with the gate on by default, a principal with
+no decision recorded is held, and a fixture that seeds only the principal is seeding
+half an account.

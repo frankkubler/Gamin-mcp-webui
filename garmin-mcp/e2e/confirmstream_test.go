@@ -73,7 +73,7 @@ func startDeploymentWithDestructiveAccess(t *testing.T) (remoteServer, string) {
 		defer func() { _ = sqlite.Close() }()
 
 		seedClient(t, sqlite)
-		principalID := seedPrincipal(t, sqlite, "e2e-confirm@example.test")
+		principalID := seedApprovedPrincipal(t, sqlite, "e2e-confirm@example.test")
 		params := seedAuthCodeParams{
 			principalID: principalID,
 			clientID:    remoteClientID,

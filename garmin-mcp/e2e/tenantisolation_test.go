@@ -57,8 +57,8 @@ func seedTwoPrincipalsAndCodes(t *testing.T) (server remoteServer, dir string, a
 		defer func() { _ = sqlite.Close() }()
 
 		seedClient(t, sqlite)
-		principalA := seedPrincipal(t, sqlite, "e2e-tenant-a@example.test")
-		principalB := seedPrincipal(t, sqlite, "e2e-tenant-b@example.test")
+		principalA := seedApprovedPrincipal(t, sqlite, "e2e-tenant-a@example.test")
+		principalB := seedApprovedPrincipal(t, sqlite, "e2e-tenant-b@example.test")
 		a = seedOneCode(t, sqlite, origin, principalA)
 		b = seedOneCode(t, sqlite, origin, principalB)
 	})

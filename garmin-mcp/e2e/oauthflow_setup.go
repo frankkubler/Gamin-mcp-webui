@@ -122,7 +122,7 @@ func setUpOAuthFlow(t *testing.T, n int) oauthFlowFixture {
 		defer func() { _ = sqlite.Close() }()
 
 		seedClient(t, sqlite)
-		principalID = seedPrincipal(t, sqlite, "e2e-oauth@example.test")
+		principalID = seedApprovedPrincipal(t, sqlite, "e2e-oauth@example.test")
 		params := seedAuthCodeParams{
 			principalID: principalID,
 			clientID:    remoteClientID,

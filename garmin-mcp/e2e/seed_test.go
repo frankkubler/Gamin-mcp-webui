@@ -134,6 +134,31 @@ func seedPrincipal(t *testing.T, sqlite *store.SQLiteStore, email string) string
 	return principal.ID
 }
 
+// seedApproval approves an account, standing in for the decision an operator
+// makes in the dashboard. It is a fork addition: with
+// require-account-approval on — the default this fork ships — a principal with
+// no decision recorded is held, and every request carrying its token is
+// refused. A fixture that seeds a principal and expects its token to work is
+// therefore seeding only half of what a usable account is.
+func seedApproval(t *testing.T, sqlite *store.SQLiteStore, principalID string) {
+	t.Helper()
+
+	if _, err := sqlite.SetAccountApproval(
+		t.Context(), principalID, store.ApprovalApproved, "e2e", ""); err != nil {
+		t.Fatalf("approve principal %s: %v", principalID, err)
+	}
+}
+
+// seedApprovedPrincipal mints a principal and approves it in one step, which is
+// what every fixture wants unless the approval gate is the thing under test.
+func seedApprovedPrincipal(t *testing.T, sqlite *store.SQLiteStore, email string) string {
+	t.Helper()
+
+	principalID := seedPrincipal(t, sqlite, email)
+	seedApproval(t, sqlite, principalID)
+	return principalID
+}
+
 // pkcePair returns a fresh PKCE verifier and its S256 challenge, both already in
 // the exact shape the authorization server requires: 43 characters of unpadded
 // base64url.
