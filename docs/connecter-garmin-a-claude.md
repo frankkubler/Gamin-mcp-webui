@@ -105,7 +105,7 @@ Arrive alors l'écran d'autorisation. Il te dit qui demande l'accès et pour quo
 | Permission | Ce qu'elle autorise |
 |---|---|
 | `garmin:read` | lire tes données : activités, sommeil, fréquence cardiaque, forme… |
-| `garmin:workouts:write` | créer une séance, l'envoyer dans ton compte, la planifier |
+| `garmin:write` | écrire dans ton compte : créer une séance, l'envoyer, la planifier — et, si je ne les ai pas retirés côté serveur, les autres outils d'écriture (poids, nutrition, métadonnées d'activité) |
 
 Il affiche aussi **ce que le déploiement enregistre à ton sujet** : un résumé, et le texte complet si tu déplies « Lire la notice en entier ».
 
@@ -234,7 +234,7 @@ Ce n'est pas une erreur. Cette page est celle du serveur, et elle s'affiche quan
 J'ai modifié le texte de la notice. Relis-le et accepte à nouveau, c'est voulu.
 
 **Claude dit qu'il n'a pas la permission de créer une séance**
-Ton autorisation date d'avant l'ajout de cette permission. Retire le connecteur, rajoute-le et reconnecte-toi : l'écran de consentement doit afficher `garmin:workouts:write`.
+Ton autorisation date d'avant l'ajout de cette permission. Retire le connecteur, rajoute-le et reconnecte-toi : l'écran de consentement doit afficher `garmin:write`. Si Claude affiche bien la permission mais refuse quand même, c'est de mon côté — dis-le-moi.
 
 **« Les paramètres du serveur n'ont pas pu être déterminés »**
 Continue quand même vers la configuration manuelle, et vérifie surtout que tu as bien saisi `claude-web-desktop` en Client ID.

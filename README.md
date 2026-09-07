@@ -189,14 +189,14 @@ et planifier des séances** dans le compte Garmin de la personne, deux choses do
 
 1. `GARMIN_MCP_ENABLE_WRITE_TOOLS=true` — sinon les outils d'écriture ne sont pas
    servis du tout ;
-2. le client OAuth déclare la portée `garmin:workouts:write`, et la personne l'accorde
-   sur la page de consentement, qui la lui affiche nommément.
+2. le client OAuth déclare la portée **`garmin:write`**, et la personne l'accorde sur la
+   page de consentement, qui la lui affiche nommément.
 
 ```
 GARMIN_MCP_ENABLE_WRITE_TOOLS=true
 GARMIN_MCP_OAUTH_CLIENTS=[{"id":"claude-web-desktop","name":"Claude",
   "redirect-uris":["http://127.0.0.1:33418/callback"],
-  "scopes":["garmin:read","garmin:workouts:write"],
+  "scopes":["garmin:read","garmin:write"],
   "resources":["https://mcp.exemple.fr/mcp"],"public":true}]
 ```
 
@@ -204,14 +204,37 @@ Les deux conditions sont nécessaires, et c'est ce qui rend le réglage sûr : a
 outils ne donne rien tant que personne n'a consenti, et consentir ne donne rien si le
 serveur ne les sert pas.
 
-**La portée est fine.** `garmin:workouts:write` couvre exactement onze outils —
-`create_run_workout`, `create_strength_workout`, `create_walk_run_workout`,
-`create_z2_walk_workout`, `upload_workout`, `upload_workouts`, `update_workout`,
-`schedule_workout`, `schedule_workouts`, `schedule_week` — et rien d'autre. Le poids, la
-nutrition, les activités, le matériel relèvent de portées distinctes qui restent
-refusées faute d'avoir été accordées.
+> **Le nom de la portée est un piège.** Seuls `garmin:write` et `garmin:destructive`
+> commandent les paliers (`internal/policy/tier.go`). Le manifeste amont
+> `compat/tools.json`, lui, nomme la portée par outil `garmin:workouts:write` — un nom
+> plausible, accepté partout, et qui n'autorise rien : la configuration l'accepte, le
+> serveur l'annonce dans `scopes_supported`, `/authorize` la délivre, le jeton la porte,
+> et la politique la refuse en silence, outil par outil. Le symptôme est un déploiement
+> où `server_info` affiche la portée accordée et un palier resté `read-only`.
+> `e2e/writescope_test.go` compare les deux jetons et fige le bon nom.
 
-**Vérifier ce que le serveur sert vraiment**, sans deviner :
+**La portée est large.** `garmin:write` ouvre **le palier d'écriture entier — 37
+outils**, pas seulement les séances. Dix concernent les séances (`create_run_workout`,
+`create_strength_workout`, `create_walk_run_workout`, `create_z2_walk_workout`,
+`upload_workout`, `upload_workouts`, `update_workout`, `schedule_workout`,
+`schedule_workouts`, `schedule_week`) ; les 27 autres touchent le poids, la nutrition,
+l'hydratation, les métadonnées d'activité, le matériel et les zones cardiaques. Le
+compte passe de 108 outils visibles à 145.
+
+Pour n'ouvrir que les séances, la portée ne suffit pas — il faut retirer les autres
+nommément, avec `GARMIN_MCP_TOOL_DENYLIST` (réglage amont ; voir
+[garmin-mcp/docs/configuration.md](garmin-mcp/docs/configuration.md)) :
+
+```
+GARMIN_MCP_TOOL_DENYLIST=add_body_composition,add_gear_to_activity,add_hydration_data,add_weigh_in,add_weigh_in_with_timestamps,create_custom_food,create_manual_activity,create_strength_training_activity,download_activity_file,download_course_gpx,log_custom_food,log_food,remove_gear_from_activity,request_reload,set_activity_description,set_activity_event_type,set_activity_feel,set_activity_name,set_activity_strength_exercise_sets,set_activity_type,set_blood_pressure,set_heart_rate_zones,set_nutrition_daily_settings,set_perceived_effort,update_custom_food,upload_course,upsert_and_log
+```
+
+Une liste à tenir à jour : un outil d'écriture ajouté par l'amont y sera absent, donc
+autorisé. Le réglage par outil de claude.ai (« Nécessite une approbation », capture 07)
+est plus souple mais reste côté client — c'est un garde-fou, pas une barrière.
+
+**Vérifier les deux moitiés**, sans deviner. `doctor` ne connaît que la première —
+ce que l'exploitant a activé :
 
 ```console
 $ docker compose exec garmin-mcp garmin-mcp doctor | grep -A3 "tool tiers"
@@ -220,9 +243,24 @@ tool tiers:
   destructive: disabled
 ```
 
+La seconde — ce que le jeton de la personne autorise réellement — se lit dans l'outil
+`server_info`, depuis Claude, et c'est le seul endroit où les deux moitiés se
+rencontrent :
+
+| Champ | Lecture seule | Écriture effective |
+| ----- | ------------- | ------------------ |
+| Paliers activés | `read-only` | `read-only, write` |
+| Scopes accordés | `garmin:read` | `garmin:read, garmin:write` |
+| Outils visibles | 108 | 145 |
+
+Un palier resté `read-only` alors que la portée d'écriture apparaît dans les scopes
+accordés signale l'une des deux causes : `GARMIN_MCP_ENABLE_WRITE_TOOLS` n'est pas pris
+en compte, ou la portée accordée n'est pas `garmin:write`.
+
 **Supprimer reste impossible.** `delete_workout` et `unschedule_workout` sont classés
 destructifs : ils demandent `GARMIN_MCP_ENABLE_DESTRUCTIVE_TOOLS=true` *et* la portée
-`garmin:workouts:destructive`, ni l'un ni l'autre activés ici.
+`garmin:destructive`, ni l'un ni l'autre activés ici. Les deux portées sont
+indépendantes : `garmin:write` n'implique pas `garmin:destructive`.
 
 Changer les portées d'un client est une **ré-autorisation** : les jetons existants ont
 été émis pour les anciennes, et chaque personne devra repasser par la page de

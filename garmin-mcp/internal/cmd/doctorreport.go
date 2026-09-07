@@ -1,10 +1,23 @@
 package cmd
 
-import "strings"
+import (
+	"strings"
 
+	"github.com/tamcore/garmin-mcp/internal/policy"
+)
+
+// tierNote names the scopes rather than describing them.
+//
+// "the matching OAuth scope" is the sentence an operator has to guess at, and a
+// plausible guess exists: compat/tools.json spells a workout write's per-tool scope
+// "garmin:workouts:write", which the client registry accepts, the metadata advertises
+// and the policy then refuses. Naming the two the policy actually reads costs one line
+// here and takes the guess away; the constants come from the policy itself, so a
+// rename cannot leave this text behind.
 func tierNote(remote bool) string {
 	if remote {
-		return "a write or destructive call also needs the matching OAuth scope"
+		return "a write or destructive call also needs the OAuth scope " +
+			string(policy.ScopeWrite) + " or " + string(policy.ScopeDestructive)
 	}
 	return "on stdio, each enabled tier is authorized by its operator flag"
 }

@@ -167,8 +167,9 @@ func writeTierSummary(out io.Writer, cfg config.Config, entries []ToolEntry) {
 		_, _ = fmt.Fprintln(out, "On stdio, each enabled tier is authorized by its operator flag.")
 		return
 	}
-	_, _ = fmt.Fprintln(out,
-		"A remote call in either higher tier also needs the matching OAuth scope.")
+	_, _ = fmt.Fprintf(out,
+		"A remote call in either higher tier also needs the OAuth scope %s or %s.\n",
+		policy.ScopeWrite, policy.ScopeDestructive)
 }
 
 // enablementOf renders one tier's operator switch.
