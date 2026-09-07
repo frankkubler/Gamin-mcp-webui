@@ -135,7 +135,7 @@ func TestTheRemoteCredentialPageNamesThisDeployment(t *testing.T) {
 
 	form := h.continueToCredentials()
 
-	for _, want := range []string{"not", "Garmin", "forward", "this one login"} {
+	for _, want := range []string{"n'est <strong>pas</strong>", "Garmin", "transmis", "cette seule"} {
 		if !strings.Contains(form, want) {
 			t.Errorf("the credential page does not say %q:\n%s", want, form)
 		}

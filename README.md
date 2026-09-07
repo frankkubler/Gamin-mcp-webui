@@ -98,7 +98,7 @@ pages servies par le serveur lui-même sont déjà là.
 ## Le consentement de l'utilisateur
 
 Ce dépôt ajoute au serveur amont une **fenêtre de consentement** : la page qui conclut
-le login dans le navigateur — celle qui porte *Allow* et *Deny* — affiche désormais ce
+le login dans le navigateur — celle qui porte *Autoriser* et *Refuser* — affiche désormais ce
 que le déploiement enregistre et ce qu'il n'enregistre pas, et l'acceptation est
 enregistrée en base.
 
@@ -110,7 +110,7 @@ enregistrée en base.
   chargement, donc rien qui puisse échouer entre la lecture et l'acceptation.
 - **Une case à cocher que le serveur vérifie.** Accorder sans cocher est refusé côté
   serveur, pas seulement par le navigateur : la page revient, la session reste vivante,
-  rien n'a été accordé. Refuser (*Deny*), en revanche, n'exige aucune acceptation.
+  rien n'a été accordé. Refuser, en revanche, n'exige aucune acceptation.
 - **On ne redemande pas.** Qui a déjà accepté le texte servi voit la date de son
   acceptation à la place de la case.
 
@@ -140,16 +140,38 @@ ce seul fichier ; l'empreinte changeant, chacun le réacceptera. Pensez à remon
 enregistrée porte aussi un libellé lisible. Le détail est dans
 [garmin-mcp/docs/privacy-notice.md](garmin-mcp/docs/privacy-notice.md).
 
-Le reste de la page de login vient du serveur amont et est en anglais : le titre, le
-descriptif du client demandeur, les boutons *Allow* et *Deny*. Seul le bloc ajouté par ce
-dépôt est traduit. Traduire les pages amont est possible — ce sont les fichiers voisins
-dans `pages/remote/` — mais chaque fichier touché est un conflit potentiel à la prochaine
-mise à jour du subtree.
+**Tout le login distant est en français**, pas seulement le bloc de notice : les sept
+pages de `garmin-mcp/internal/loginweb/pages/remote/` — annonce, identifiants Garmin,
+code à usage unique, consentement, attente de validation, connexion expirée, page
+terminale — et les messages d'erreur que ces pages affichent. Le profil « loopback », celui de la commande
+`garmin-mcp login` que seul l'exploitant utilise depuis son terminal, reste en anglais
+comme en amont. C'est le prix à payer : chaque fichier traduit est un conflit potentiel à
+la prochaine mise à jour du subtree, ce qui est acceptable pour des pages que vos
+utilisateurs lisent et ne l'était pas pour un outil d'exploitation.
 
 Le texte livré décrit ce que ce build fait réellement, vérifié contre le schéma. **Si
 vous changez ce que le serveur stocke, la notice fait partie du changement** — et c'est
 l'opérateur du déploiement qui reste responsable du traitement et de ce que la notice
 promet.
+
+### La page qui clôt le login
+
+Un login réussi se termine par une redirection vers le client : la dernière page que la
+personne voit est celle de Claude, pas celle du serveur. La transaction est alors close
+et son cookie effacé — c'est voulu, une transaction terminée ne doit plus être
+adressable.
+
+Conséquence : **toute requête ultérieure sur une route `/login…` tombe sur une page
+terminale**, et c'est le cas normal quand la fenêtre d'autorisation est rouverte,
+rechargée, ou revisitée avec le bouton « précédent » après coup. Cette page dit
+maintenant ce qui s'est passé — « Si vous venez d'autoriser l'accès, tout s'est bien
+passé » — au lieu du *Nothing here* amont, qui se lisait comme une panne alors que le
+connecteur venait de se connecter.
+
+Seules `/authorize` et les quatre routes `/login…` servent cette page. Une adresse
+inconnue du déploiement obtient le 404 nu du serveur HTTP, sans mise en forme : si
+quelqu'un vous montre une page blanche portant `404 page not found`, il n'était pas dans
+le login.
 
 ### Côté interface
 
@@ -220,7 +242,7 @@ d'autorisation, aucun jeton.
 | Où | Ce qui se passe |
 | -- | --------------- |
 | Page de consentement | un compte non validé y accède normalement : un bandeau annonce l'attente, et **il peut accepter la notice dès maintenant**. Son acceptation est enregistrée. |
-| Au clic sur *Allow* | l'acceptation est écrite, puis la porte s'applique : compte non validé → page « en attente », transaction OAuth close, aucun jeton. |
+| Au clic sur *Autoriser* | l'acceptation est écrite, puis la porte s'applique : compte non validé → page « en attente », transaction OAuth close, aucun jeton. |
 | À chaque requête MCP | la lecture du jeton d'accès refuse un compte non validé. Retirer une validation coupe l'accès **à la requête suivante**, pas au prochain login. |
 | Dans l'interface | colonne *Validation*, filtre, tuile, et les boutons *Valider* / *Bloquer* / *Remettre en attente*. |
 

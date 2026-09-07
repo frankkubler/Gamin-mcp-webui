@@ -111,7 +111,7 @@ Il affiche aussi **ce que le déploiement enregistre à ton sujet** : un résum�
 
 ![L'écran de consentement, notice dépliée](consentement.png)
 
-**Coche la case** « J'ai lu la notice… », puis clique sur **Allow**.
+**Coche la case** « J'ai lu la notice… », puis clique sur **Autoriser**.
 
 La case n'est pas décorative : sans elle, le serveur refuse et te réaffiche la même page. Rien n'est perdu, tu coches et tu recliques.
 
@@ -221,11 +221,14 @@ Pour couper aussi côté Garmin, change ton mot de passe Garmin Connect — ça 
 **« Compte en attente de validation »**
 Ce n'est pas une panne : c'est l'étape 5. Préviens-moi, attends ma confirmation, puis reclique sur **Connect**.
 
-**J'ai coché et cliqué sur Allow, et Claude affiche une erreur d'autorisation**
+**J'ai coché et cliqué sur Autoriser, et Claude affiche une erreur d'autorisation**
 Le plus probable : ton compte attend encore ma validation. Regarde si la page du serveur affichait bien « Compte en attente de validation » — si oui, tout va bien, il faut juste attendre.
 
-**La même page de consentement revient après avoir cliqué sur Allow**
+**La même page de consentement revient après avoir cliqué sur Autoriser**
 La case n'était pas cochée. Coche-la et recommence, il n'y a rien d'autre à refaire.
+
+**La dernière page dit « Cette page n'est plus active »**
+Ce n'est pas une erreur. Cette page est celle du serveur, et elle s'affiche quand la fenêtre d'autorisation est rouverte, rechargée, ou revisitée avec le bouton « précédent » **après** que l'autorisation s'est terminée : à ce moment-là, la page a fait son travail et n'existe plus. Retourne dans Claude et regarde le connecteur : s'il est connecté, il n'y a rien à faire.
 
 **On me redemande d'accepter la notice alors que je l'avais déjà acceptée**
 J'ai modifié le texte de la notice. Relis-le et accepte à nouveau, c'est voulu.

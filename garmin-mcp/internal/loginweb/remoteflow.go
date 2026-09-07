@@ -41,7 +41,7 @@ func (s *RemoteServer) handleMFASubmit(w http.ResponseWriter, r *http.Request) {
 
 	code := r.PostFormValue(fieldCode)
 	if len(code) > MaxCodeLen {
-		s.retry(w, r, session, pageMFA, msgFieldTooLong)
+		s.retry(w, r, session, pageMFA, msgRemoteFieldTooLong)
 		return
 	}
 
@@ -51,7 +51,7 @@ func (s *RemoteServer) handleMFASubmit(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if mfaFailureIsRetryable(err) {
 			s.log(r.Context(), "the one-time code was not accepted")
-			s.retry(w, r, session, pageMFA, msgCodeRejected)
+			s.retry(w, r, session, pageMFA, msgRemoteCodeRejected)
 			return
 		}
 		s.log(r.Context(), "the login could not continue")
@@ -416,7 +416,7 @@ func (s *RemoteServer) refuse(w http.ResponseWriter, cause error) {
 		s.pages.render(w, http.StatusGone, pageExpired, emptyRemoteData(""))
 	case errors.Is(cause, errAttemptsExhausted):
 		s.pages.render(w, http.StatusTooManyRequests, pageNotFound,
-			emptyRemoteData(sanitizedMessage(msgExhausted)))
+			emptyRemoteData(sanitizedMessage(msgRemoteExhausted)))
 	default:
 		s.notFound(w)
 	}

@@ -1,22 +1,24 @@
-{{define "title"}}Authorize an MCP client{{end}}
+{{define "title"}}Autoriser un client MCP{{end}}
 {{define "content"}}
-<p><strong>{{.Client.ClientName}}</strong> (<code>{{.Client.ClientID}}</code>) asks
-to reach your Garmin data through this garmin-mcp deployment.</p>
+<p><strong>{{.Client.ClientName}}</strong> (<code>{{.Client.ClientID}}</code>)
+demande à accéder à vos données Garmin par l'intermédiaire de ce déploiement
+garmin-mcp.</p>
 <dl>
-<dt>The answer is sent to</dt>
+<dt>La réponse est envoyée à</dt>
 <dd><strong>{{.Client.RedirectHost}}</strong></dd>
-<dt>Exact address</dt>
+<dt>Adresse exacte</dt>
 <dd><code>{{.Client.RedirectURI}}</code></dd>
-<dt>Server being authorized</dt>
+<dt>Serveur autorisé</dt>
 <dd><code>{{.Client.Resource}}</code></dd>
-<dt>Requested access</dt>
+<dt>Accès demandé</dt>
 <dd><ul>{{range .Client.Scopes}}<li><code>{{.}}</code></li>{{end}}</ul></dd>
 </dl>
-<p>Nothing is granted yet, and nothing is asked of Garmin yet. On the next page you
-enter your Garmin Connect email address and password.</p>
-<p>If you did not start this sign-in, close this page.</p>
+<p>Rien n'est accordé pour l'instant, et rien n'est encore demandé à Garmin. Sur la
+page suivante, vous saisirez l'adresse e-mail et le mot de passe de votre compte
+Garmin Connect.</p>
+<p>Si vous n'êtes pas à l'origine de cette connexion, fermez cette page.</p>
 <form method="post" action="/login">
 <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-<p><button type="submit">Continue to the Garmin sign-in</button></p>
+<p><button type="submit">Continuer vers la connexion Garmin</button></p>
 </form>
 {{end}}

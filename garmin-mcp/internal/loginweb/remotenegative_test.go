@@ -241,7 +241,7 @@ func TestRemoteMFARejectedCodeMayBeRetried(t *testing.T) {
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("POST %s with a rejected code = %d, want 401", pathMFA, resp.StatusCode)
 	}
-	if !strings.Contains(retryForm, "not accepted") {
+	if !strings.Contains(retryForm, "pas été accepté") {
 		t.Errorf("page = %q, want it to say the code was not accepted", retryForm)
 	}
 

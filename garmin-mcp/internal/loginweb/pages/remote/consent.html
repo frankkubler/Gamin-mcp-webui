@@ -1,23 +1,23 @@
-{{define "title"}}Confirm the access you grant{{end}}
+{{define "title"}}Confirmer l'accès que vous accordez{{end}}
 {{define "content"}}
-<p>Your Garmin account is signed in. Nothing has been granted yet.</p>
+<p>Votre compte Garmin est connecté. Rien n'a encore été accordé.</p>
 {{if .AccountPending}}
 <p class="message"><strong>Votre compte est en attente de validation.</strong> Vous
 pouvez accepter la notice ci-dessous dès maintenant — elle sera enregistrée — mais aucun
 accès ne sera accordé tant que la validation n'est pas faite. Il faudra alors revenir
 plus tard et relancer cette autorisation depuis votre client.</p>
 {{end}}
-<p><strong>{{.Client.ClientName}}</strong> (<code>{{.Client.ClientID}}</code>) will
-receive a token for this deployment only. It never receives your Garmin password or
-your Garmin tokens.</p>
+<p><strong>{{.Client.ClientName}}</strong> (<code>{{.Client.ClientID}}</code>) recevra
+un jeton valable pour ce seul déploiement. Il ne reçoit jamais votre mot de passe
+Garmin ni vos jetons Garmin.</p>
 <dl>
-<dt>The answer is sent to</dt>
+<dt>La réponse est envoyée à</dt>
 <dd><strong>{{.Client.RedirectHost}}</strong></dd>
-<dt>Exact address</dt>
+<dt>Adresse exacte</dt>
 <dd><code>{{.Client.RedirectURI}}</code></dd>
-<dt>Server being authorized</dt>
+<dt>Serveur autorisé</dt>
 <dd><code>{{.Client.Resource}}</code></dd>
-<dt>Access granted</dt>
+<dt>Accès accordé</dt>
 <dd><ul>{{range .Client.Scopes}}<li><code>{{.}}</code></li>{{end}}</ul></dd>
 </dl>
 
@@ -40,16 +40,16 @@ your Garmin tokens.</p>
 J'ai lu la notice ci-dessus et j'accepte que ce déploiement enregistre ce qu'elle
 décrit.
 </label>
-<span class="notice">Refuser (« Deny ») n'enregistre aucune acceptation.</span>
+<span class="notice">Refuser n'enregistre aucune acceptation.</span>
 </p>
 {{else}}
 <p class="notice">Vous avez accepté cette notice le {{.Privacy.AcceptedOn}}. Elle n'a
 pas changé depuis.</p>
 {{end}}
 <p>
-<button type="submit" name="decision" value="allow">Allow</button>
-<button type="submit" name="decision" value="deny">Deny</button>
+<button type="submit" name="decision" value="allow">Autoriser</button>
+<button type="submit" name="decision" value="deny">Refuser</button>
 </p>
 </form>
-<p class="notice">Denying discards the Garmin sign-in this page is holding.</p>
+<p class="notice">Refuser abandonne la connexion Garmin que cette page conserve.</p>
 {{end}}

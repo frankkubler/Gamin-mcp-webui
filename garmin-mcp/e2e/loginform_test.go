@@ -361,7 +361,7 @@ func TestRemoteLoginCredentialSubmissionReachesOnlyGarminSSOAndFailsSafely(t *te
 	if location := submit.Header.Get("Location"); location != "" {
 		t.Errorf("Location = %q, want no redirect: the transaction must not advance", location)
 	}
-	if !strings.Contains(submitBody, "did not accept those credentials") {
+	if !strings.Contains(submitBody, "pas accepté ces identifiants") {
 		t.Errorf("body does not report the rejection: %s", submitBody)
 	}
 

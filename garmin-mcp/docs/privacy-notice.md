@@ -6,7 +6,8 @@ database as everything else.
 
 ## What a person sees
 
-The consent page — the last page of the browser login, the one with Allow and Deny —
+The consent page — the last page of the browser login, the one with Autoriser and
+Refuser —
 carries a summary of what this deployment records and what it never records, always
 visible, and the full text behind a disclosure they open if they want it. Below the
 notice is an acceptance box. Granting without ticking it is refused by the server, not

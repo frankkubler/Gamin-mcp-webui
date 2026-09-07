@@ -37,10 +37,29 @@ const (
 	maxDecisionLen = 16
 )
 
-// msgPrivacyRequired is shown when the notice was not accepted. It states what to do
-// rather than blaming the reader, and quotes nothing that was submitted.
-const msgPrivacyRequired = "Acceptez la notice de confidentialité ci-dessous pour " +
-	"accorder l'accès, ou choisissez Deny."
+// The messages the remote pages may show.
+//
+// They are this profile's own rather than the loopback profile's, for the same
+// reason the two profiles have separate page sets: the two talk to different
+// people. The loopback profile answers the operator at their own terminal and
+// says so; this one answers a person who arrived from a client application in a
+// browser, and telling them to "start a new login from the terminal" names a
+// place they have no access to.
+//
+// Like the loopback set, none quotes a submitted value and none distinguishes a
+// wrong password from an unknown account.
+const (
+	msgRemoteLoginRejected = "Garmin n'a pas accepté ces identifiants. " +
+		"Vérifiez-les et réessayez."
+	msgRemoteCodeRejected = "Ce code n'a pas été accepté. Vérifiez-le et réessayez."
+	msgRemoteFieldTooLong = "L'une des valeurs dépasse ce que ce formulaire accepte."
+	msgRemoteExhausted    = "Trop de tentatives. Relancez la connexion depuis " +
+		"l'application qui vous a envoyé ici."
+	// msgPrivacyRequired is shown when the notice was not accepted. It states
+	// what to do rather than blaming the reader.
+	msgPrivacyRequired = "Acceptez la notice de confidentialité ci-dessous pour " +
+		"accorder l'accès, ou choisissez Refuser."
+)
 
 // Handler returns the router for this deployment.
 //
@@ -182,7 +201,7 @@ func (s *RemoteServer) handleCredentialSubmit(w http.ResponseWriter, r *http.Req
 	email := r.PostFormValue(fieldEmail)
 	password := r.PostFormValue(fieldPassword)
 	if len(email) > MaxEmailLen || len(password) > MaxPasswordLen {
-		s.retry(w, r, session, pageCredentials, msgFieldTooLong)
+		s.retry(w, r, session, pageCredentials, msgRemoteFieldTooLong)
 		return
 	}
 
@@ -192,7 +211,7 @@ func (s *RemoteServer) handleCredentialSubmit(w http.ResponseWriter, r *http.Req
 	switch {
 	case err != nil:
 		s.log(r.Context(), "garmin did not accept the credentials")
-		s.retry(w, r, session, pageCredentials, msgLoginRejected)
+		s.retry(w, r, session, pageCredentials, msgRemoteLoginRejected)
 	case attempt.NeedsMFA:
 		s.challenge(w, r, session, attempt)
 	default:
