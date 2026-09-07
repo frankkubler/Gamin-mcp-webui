@@ -189,6 +189,15 @@ serveur ne les sert pas.
 nutrition, les activités, le matériel relèvent de portées distinctes qui restent
 refusées faute d'avoir été accordées.
 
+**Vérifier ce que le serveur sert vraiment**, sans deviner :
+
+```console
+$ docker compose exec garmin-mcp garmin-mcp doctor | grep -A3 "tool tiers"
+tool tiers:
+  write: enabled
+  destructive: disabled
+```
+
 **Supprimer reste impossible.** `delete_workout` et `unschedule_workout` sont classés
 destructifs : ils demandent `GARMIN_MCP_ENABLE_DESTRUCTIVE_TOOLS=true` *et* la portée
 `garmin:workouts:destructive`, ni l'un ni l'autre activés ici.
