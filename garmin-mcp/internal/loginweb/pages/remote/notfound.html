@@ -1,8 +1,20 @@
 {{define "title"}}Cette page n'est plus active{{end}}
 {{define "content"}}
+{{if .Message}}
+{{/* Un refus porte son explication, affichee par base.html juste au-dessus. La
+     rassurance ci-dessous la contredirait : ce parcours ne s'est pas termine,
+     il a ete refuse, et le texte doit dire quoi faire de cette raison-la. */}}
+<p>Cette tentative n'a pas abouti, et la raison est indiquée ci-dessus. Elle vient
+de la configuration du client qui vous a envoyé ici, pas de votre compte : rien
+n'a été accordé, et réessayer à l'identique donnera le même résultat.</p>
+<p>Si vous exploitez ce déploiement, c'est le registre des clients OAuth qu'il faut
+corriger. Sinon, signalez ce message à la personne qui vous a donné l'adresse de
+ce serveur.</p>
+{{else}}
 <p><strong>Si vous venez d'autoriser l'accès, tout s'est bien passé.</strong>
 L'autorisation est terminée et cette page ne sert plus à rien : retournez dans
 l'application qui vous a envoyé ici, le connecteur doit y apparaître connecté.</p>
 <p>Sinon, cette adresse n'est plus valide : la connexion a peut-être été annulée,
 ou elle a expiré. Relancez-la depuis l'application qui vous a envoyé ici.</p>
+{{end}}
 {{end}}

@@ -102,6 +102,40 @@ func TestACrossClientTransactionCookieIsRefused(t *testing.T) {
 	}
 }
 
+// TestARefusalDoesNotAlsoSayEverythingWentFine is the mutant this test catches:
+// the terminal page's reassuring paragraph — written for the frequent case, a
+// browser landing there after the flow already completed — contradicts a refusal
+// that renders the SAME page with a message. A deployment really did show
+// "everything went fine" above "the redirect URI is not registered", and the
+// person reading it could not tell which half to believe.
+func TestARefusalDoesNotAlsoSayEverythingWentFine(t *testing.T) {
+	t.Parallel()
+	h := newRemote(t, &fakeAuthenticator{loginAttempt: remoteSucceeded()})
+
+	// A refusal the authorization server renders locally — an unregistered
+	// redirect URI is exactly this shape — lands on the same page a finished
+	// transaction does, carrying its reason.
+	h.authz.beginErr = fakeRefusal{status: http.StatusBadRequest}
+	resp, body := h.b.get(loginweb.RemoteAuthorizePath + "?" + authorizeQuery(testClientID).Encode())
+
+	if resp.StatusCode == http.StatusSeeOther {
+		t.Fatal("a refused authorization opened a transaction")
+	}
+	if !strings.Contains(body, refusalDescription) {
+		t.Fatalf("the refusal does not carry its reason:\n%s", body)
+	}
+	if strings.Contains(body, "tout s'est bien passé") {
+		t.Error("the refusal page also claims the authorization succeeded")
+	}
+
+	// And the reassurance is still there when there is no refusal to explain:
+	// that is the case it was written for.
+	_, terminal := h.b.get(pathConsent)
+	if !strings.Contains(terminal, "tout s'est bien passé") {
+		t.Errorf("the terminal page lost its reassurance:\n%s", terminal)
+	}
+}
+
 // TestATerminalTransactionIsUnusableImmediately covers the replay case: once consent
 // is granted the capability, the cookie and every route stop working, and no second
 // code is issued.
