@@ -300,6 +300,13 @@ reste exact quelles que soient ces permissions.
 
 ## Connecter ChatGPT à côté de Claude
 
+> **Découverte OpenID.** Le déploiement sert le document RFC 8414 sous son nom propre
+> *et* sous `/.well-known/openid-configuration`. Ce n'est pas un fournisseur OpenID —
+> il n'émet aucun jeton d'identité — mais un client qui vient de lire le document OAuth
+> peut encore demander ce chemin, et un `404` met fin à sa découverte. Observé : toutes
+> les requêtes à `200`, celle-là seule à `404`, et le client rapportant un échec de
+> dépendance sans autre indice.
+
 Un déploiement peut servir plusieurs clients MCP. Tout ce que demande un nouveau client
 est **additif** : une entrée de plus dans le registre OAuth, sans toucher aux autres.
 Mesuré sur un déploiement réel, avec les deux clients déclarés ensemble :

@@ -381,7 +381,9 @@ func (r *remoteDeployment) mount() (http.Handler, error) {
 	// The authorization endpoints are the ones a stranger can reach without a
 	// token, so they are the ones worth bounding. The limiter keys on the client
 	// address derived through the configured proxy trust, never on a raw header.
-	mux.Handle(authServerMetadataPath, guard(r.oauth.AuthorizationServerMetadataHandler()))
+	authMetadata := guard(r.oauth.AuthorizationServerMetadataHandler())
+	mux.Handle(authServerMetadataPath, authMetadata)
+	mux.Handle(oidcMetadataPath, authMetadata)
 	mux.Handle(tokenPath, guard(r.oauth.TokenHandler()))
 	mux.Handle(revocationPath, guard(r.oauth.RevocationHandler()))
 

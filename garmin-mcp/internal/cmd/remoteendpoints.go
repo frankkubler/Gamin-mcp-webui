@@ -20,6 +20,20 @@ const (
 	// authServerMetadataPath is the RFC 8414 authorization server metadata
 	// document.
 	authServerMetadataPath = "/.well-known/oauth-authorization-server"
+	// oidcMetadataPath serves that same document under the name an OpenID
+	// Connect client looks for.
+	//
+	// This deployment is an OAuth 2.0 authorization server and not an OpenID
+	// provider: it mints no ID token and has no JWKS. But a client that has
+	// already read the RFC 8414 document may still ask for this path, and a 404
+	// here ends its discovery -- observed on a real deployment, where every other
+	// request in the sequence answered 200 and only this one did not, leaving the
+	// client to report a dependency failure with nothing else to go on.
+	//
+	// The document served is byte-identical. Answering with the endpoints this
+	// server really has is more useful than refusing, and it adds no capability:
+	// a client that needs an ID token will find no field promising one.
+	oidcMetadataPath = "/.well-known/openid-configuration"
 	// tokenPath is the OAuth token endpoint.
 	tokenPath = "/token"
 	// revocationPath is the RFC 7009 revocation endpoint.
@@ -43,6 +57,7 @@ const (
 var reservedPaths = []string{
 	mcpserver.DefaultResourceMetadataPath,
 	authServerMetadataPath,
+	oidcMetadataPath,
 	tokenPath,
 	revocationPath,
 	loginweb.RemoteAuthorizePath,
