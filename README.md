@@ -384,6 +384,36 @@ et `docker compose up -d`. Trois précisions qui évitent les essais successifs 
 - **Une fin de ligne est tolérée** : le serveur fait un `TrimSpace`. Les espaces
   *internes* du mot de passe Gmail, non — retirez-les.
 
+#### Tester l'envoi sans attendre un compte en attente
+
+Le serveur n'envoie que lorsqu'un compte se met en attente, ce qui est malcommode à
+déclencher pour vérifier une configuration. L'image porte un script qui rejoue le même
+échange — même hôte, même port, même mode TLS, même compte, même secret :
+
+```console
+$ docker exec garmin-mcp python3 /usr/local/bin/smtp-test.py
+serveur  smtp.gmail.com:587 en starttls
+compte   vous@gmail.com
+de       vous@gmail.com
+a        vous@gmail.com
+secret   /run/secrets/smtp : 16 caracteres, mode 0600, proprietaire 10001:10001
+OK — smtp.gmail.com a accepte le message pour vous@gmail.com.
+```
+
+Il ne prend aucun réglage : tout vient des variables du conteneur, donc un essai réussi
+porte sur la configuration réelle. Deux options : une adresse en argument, pour ne pas
+écrire à toute la liste, et `--sans-envoi`, qui contrôle les réglages et le secret sans
+ouvrir de connexion.
+
+**La ligne `secret`** vaut le détour : un mot de passe d'application Gmail fait 16
+caractères, et le mode comme le propriétaire y sont rappelés — de quoi diagnostiquer
+d'un coup d'œil un secret tronqué par un `$` ou un fichier que le serveur refusera.
+
+Ce que ce script ne couvre pas : les contrôles de permission du serveur lui-même. Ils
+sont déjà prouvés par le fait que le conteneur **démarre**, un fichier refusé faisant
+échouer le démarrage. Le script lit donc le fichier simplement et se contente de
+décrire ce qu'il a trouvé.
+
 Trois garanties, chacune couverte par un test :
 
 - **Un envoi ne retarde ni ne fait échouer un login.** Il part en tâche de fond, sur un

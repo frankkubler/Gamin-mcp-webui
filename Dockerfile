@@ -60,7 +60,7 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
-COPY docker/entrypoint.sh docker/healthcheck.py /usr/local/bin/
+COPY docker/entrypoint.sh docker/healthcheck.py docker/smtp-test.py /usr/local/bin/
 COPY --from=serveur /out/garmin-mcp /usr/local/bin/garmin-mcp
 
 # Le compte de service. /data lui appartient dans l'image, de sorte qu'un volume
