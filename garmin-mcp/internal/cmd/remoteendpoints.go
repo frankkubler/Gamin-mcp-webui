@@ -29,6 +29,10 @@ const (
 	// loginSubtreePath is the rest of that profile: the credential form, the
 	// one-time code form, the consent page, and the stylesheet.
 	loginSubtreePath = loginPath + "/"
+	// faviconPath is where a browser looks for an origin's icon without being
+	// told. It redirects to mcpserver.IconPath rather than serving the document
+	// twice, so there is one icon and one place it lives.
+	faviconPath = "/favicon.ico"
 	// schemeHTTPS is the only scheme a public deployment may publish.
 	schemeHTTPS = "https"
 )
@@ -43,6 +47,8 @@ var reservedPaths = []string{
 	revocationPath,
 	loginweb.RemoteAuthorizePath,
 	loginPath,
+	mcpserver.IconPath,
+	faviconPath,
 }
 
 // remoteEndpoints are the absolute URLs a remote deployment publishes, all derived

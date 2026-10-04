@@ -173,6 +173,36 @@ inconnue du déploiement obtient le 404 nu du serveur HTTP, sans mise en forme :
 quelqu'un vous montre une page blanche portant `404 page not found`, il n'était pas dans
 le login.
 
+### L'icône du connecteur
+
+Le serveur amont ne déclare aucune icône. Un client qui ne s'en voit offrir aucune
+affiche ce qu'il a sous la main — et sur une URL qui a servi une autre implémentation
+auparavant, il peut continuer à afficher *sa* marque indéfiniment, bien après qu'elle a
+été remplacée.
+
+Ce dépôt en déclare une, par deux chemins, parce qu'un client peut prendre l'un ou
+l'autre :
+
+| Chemin | Où |
+| ------ | -- |
+| Dans le protocole | `serverInfo.icons` de la réponse `initialize`, en `data:` URI — la seule forme qui marche aussi sur stdio, qui n'a pas d'origine |
+| En HTTP | `GET /icon.svg`, **public et sans jeton** — un client la récupère avant d'en avoir un ; `/favicon.ico` y redirige |
+
+`e2e/icon_test.go` vérifie les deux sur le binaire réel, et chacune des deux moitiés a
+été vue échouer quand on retire son code.
+
+**Ce n'est pas le logo Garmin, volontairement.** Ce serveur n'est pas exploité par
+Garmin, chaque page du login le dit en autant de mots, et une marque Garmin sur ces
+pages contredirait cette déclaration ; par ailleurs ce dépôt est public, et le logo est
+une marque déposée qui n'a rien à y faire. L'icône livrée est un tracé de pouls, propre
+au projet. Sur **votre** déploiement, c'est votre décision : remplacez
+`garmin-mcp/internal/mcpserver/icon.svg` et reconstruisez. Aucun réglage ne lit un
+chemin d'icône — il n'y a donc pas de paramètre par lequel une requête pourrait pointer
+le déploiement vers l'image de quelqu'un d'autre.
+
+Si l'ancienne icône persiste côté client après un rebuild, c'est un cache : retirez le
+connecteur et rajoutez-le.
+
 ### Côté interface
 
 L'interface montre, par compte, la date de la dernière acceptation et sa version, ou une

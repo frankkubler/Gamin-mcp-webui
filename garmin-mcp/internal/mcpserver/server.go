@@ -215,6 +215,7 @@ func newSDKServer(deps Deps) *mcp.Server {
 		Name:    deps.Info.Name,
 		Title:   deps.Info.Title,
 		Version: deps.Info.Version,
+		Icons:   serverIcons(),
 	}, &mcp.ServerOptions{
 		Instructions: deps.Instructions,
 		Capabilities: &mcp.ServerCapabilities{},

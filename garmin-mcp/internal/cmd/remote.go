@@ -391,6 +391,15 @@ func (r *remoteDeployment) mount() (http.Handler, error) {
 	mux.Handle(mcpserver.LivenessPath, r.transport)
 	mux.Handle(mcpserver.ReadinessPath, r.transport)
 
+	// The icon is public and unauthenticated, because a client fetches it before
+	// it holds a token — that is the whole point of an icon. serverInfo carries
+	// the same document inline as a data URI, so this route is the fallback for a
+	// client that looks for a favicon at the origin instead of reading what the
+	// server advertised.
+	icon := mcpserver.IconHandler()
+	mux.Handle(mcpserver.IconPath, icon)
+	mux.Handle(faviconPath, http.RedirectHandler(mcpserver.IconPath, http.StatusFound))
+
 	loginHandler := r.login.Handler()
 	mux.Handle(loginweb.RemoteAuthorizePath, loginHandler)
 	mux.Handle(loginPath, loginHandler)
