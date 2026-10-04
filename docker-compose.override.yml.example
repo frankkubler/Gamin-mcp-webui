@@ -1,0 +1,62 @@
+# Forme locale de VOTRE deploiement. A copier, puis a adapter :
+#
+#   cp docker-compose.override.yml.example docker-compose.override.yml
+#
+# docker compose le fusionne automatiquement avec docker-compose.yml, sans
+# option a passer. Il est ignore par git (voir .gitignore), donc un `git pull`
+# ne peut pas l'ecraser -- et c'est tout l'interet : modifier directement
+# docker-compose.yml marche jusqu'au jour ou une mise a jour du depot le ramene
+# a sa version suivie, ou bien ou un `git stash` l'emporte sans bruit. Les deux
+# se sont produits sur un deploiement reel, et la panne qui suit est muette :
+# les services demarrent, se portent bien, et plus rien ne les atteint.
+#
+# Verifiez toujours le resultat de la fusion avant de redemarrer :
+#
+#   docker compose config | grep -A6 "ports:"
+#
+# Retirez de ce fichier tout ce dont vous n'avez pas besoin : une cle presente
+# mais vide remplacerait le reglage du fichier principal.
+
+services:
+  garmin-mcp:
+    # --- Ports publies -------------------------------------------------------
+    #
+    # Le fichier principal publie sur 127.0.0.1 uniquement, ce qui convient a un
+    # reverse proxy installe sur CETTE machine. Si votre proxy est ailleurs -- une
+    # autre machine, un reseau overlay comme NetBird, un autre hote du meme LAN --
+    # il ne peut pas joindre la boucle locale, et il repondra 502.
+    #
+    # Le tag `!override` est OBLIGATOIRE ici. Sans lui, docker compose AJOUTE vos
+    # entrees a celles du fichier principal au lieu de les remplacer : vous vous
+    # retrouvez avec deux publications sur le meme port hote, et le demarrage
+    # echoue. Verifie avec `docker compose config`.
+    #
+    # Preferez une adresse explicite a 0.0.0.0 : sur une machine qui a une IP
+    # publique, 0.0.0.0 expose l'interface web -- HTTP en clair, protege par un
+    # simple mot de passe Basic -- directement sur Internet, et rend votre proxy
+    # TLS contournable. L'IP de votre reseau prive est le bon choix :
+    #
+    #   ip -4 -o addr show | grep -E 'wt0|netbird'
+    #
+    # Le second chiffre de chaque ligne est le port DANS le conteneur : il ne
+    # change pas (8080 pour l'interface, 8180 pour MCP). Le premier est celui que
+    # votre proxy doit viser, et vous etes libre de le choisir.
+    ports: !override
+      - "10.10.0.5:8080:8080"   # interface web
+      - "10.10.0.5:8081:8180"   # endpoint MCP et pages de login OAuth
+
+    # --- Secret SMTP ---------------------------------------------------------
+    #
+    # Necessaire seulement si la notification par e-mail est configuree. Contrairement
+    # aux ports, `volumes` s'AJOUTE : le volume /data du fichier principal est
+    # conserve, pas besoin de `!override`.
+    #
+    # Le fichier doit exister et appartenir au compte de service, sinon le
+    # demarrage echoue -- et s'il n'existe pas du tout, Docker cree un repertoire
+    # a sa place, que le serveur refuse :
+    #
+    #   install -m 0600 -o 10001 -g 10001 smtp.secret ./secrets/smtp
+    #   ls -l secrets/smtp
+    #
+    volumes:
+      - ./secrets/smtp:/run/secrets/smtp:ro

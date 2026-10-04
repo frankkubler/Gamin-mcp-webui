@@ -11,3 +11,6 @@ venv/
 dist/
 build/
 *.egg-info/
+
+# Forme locale du deploiement : ports, montages. Voir le .example suivi.
+docker-compose.override.yml

@@ -585,6 +585,34 @@ Mettez un reverse proxy TLS devant, et donnez au serveur l'URL publique **de ce 
 Alternative sans proxy : montez vos propres `GARMIN_MCP_TLS_CERT_FILE` et
 `GARMIN_MCP_TLS_KEY_FILE`, le serveur termine alors le TLS lui-même.
 
+#### Adaptez le déploiement dans un override, jamais dans `docker-compose.yml`
+
+`docker-compose.yml` est suivi par git. Y écrire la forme de **votre** déploiement — les ports que
+votre proxy vise, le montage du secret SMTP — marche jusqu'au jour où un `git pull` le ramène à sa
+version du dépôt, ou bien où un `git stash` l'emporte sans bruit. Les deux se sont produits, et la
+panne qui suit est muette : les services démarrent, se portent bien, le conteneur est `healthy`, et
+plus rien ne les atteint. Le proxy répond `502`, ce qui envoie chercher la cause du mauvais côté.
+
+Copiez le gabarit, qui est documenté et couvre les deux cas :
+
+```bash
+cp docker-compose.override.yml.example docker-compose.override.yml
+```
+
+`docker compose` le fusionne tout seul, et `.gitignore` le protège. Deux règles que le gabarit
+détaille et qu'un `docker compose config` vérifie avant tout redémarrage :
+
+- **`ports:` exige le tag `!override`.** Sans lui, compose *ajoute* vos entrées à celles du fichier
+  principal au lieu de les remplacer : deux publications sur le même port hôte, et le démarrage
+  échoue.
+- **`volumes:` s'ajoute de lui-même.** Le volume `/data` est conservé ; le secret SMTP vient à côté.
+
+Le fichier principal publie sur `127.0.0.1` uniquement, ce qui convient à un proxy installé sur la
+**même** machine. Si le vôtre est ailleurs — autre hôte, réseau overlay — il ne peut pas joindre la
+boucle locale ; publiez sur l'adresse qu'il voit, de préférence une IP privée explicite plutôt que
+`0.0.0.0`, qui exposerait l'interface web en clair sur Internet et rendrait votre proxy TLS
+contournable.
+
 **Sauvegarde.** La base et la clé maîtresse sont les deux moitiés d'une même sauvegarde : une base
 sans sa clé est illisible. Sauvegardez `/data` en entier, avec le processus arrêté ou via la
 sauvegarde en ligne de SQLite. Voir `garmin-mcp/docs/operations.md`.
