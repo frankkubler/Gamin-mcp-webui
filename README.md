@@ -518,6 +518,16 @@ remplacés par des soulignés, préfixée `GARMIN_MCP_`. La liste complète est 
 
 Toutes les variables sont facultatives sauf le secret d'accès.
 
+> **Un `$` dans une valeur de `.env` est mangé par docker compose.** Le fichier est
+> interpolé avant d'être passé au conteneur : `WEBUI_PASSWORD=Xk8$c47abc` arrive comme
+> `Xk8`, tronqué au `$`, et compose se contente d'un avertissement
+> (`The "c47abc" variable is not set`). **Les guillemets doubles ne protègent pas** —
+> seuls `$$` et les guillemets simples le font. Vérifié ici avec
+> `docker compose config` : valeur reçue `Xk8` avec un `$` nu, intacte avec `$$` ou des
+> guillemets simples. Le plus sûr reste un secret qui n'en contient pas :
+> `openssl rand -base64 32`. Pour repérer les lignes concernées sans afficher les
+> secrets : `grep -n '\$' .env | cut -d= -f1`.
+
 | Variable | Défaut | Rôle |
 | -------- | ------ | ---- |
 | `WEBUI_DATABASE_PATH` | `/data/garmin.db` | base SQLite de garmin-mcp (sa clé `database-path`). |
