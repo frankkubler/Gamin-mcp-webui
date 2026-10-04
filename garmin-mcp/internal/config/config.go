@@ -242,6 +242,21 @@ type Config struct {
 	// reach URL construction.
 	Region protocol.ValidatedDomain
 
+	// LogRequests turns on one log record per HTTP request on the remote
+	// deployment: method, path, status and duration.
+	//
+	// It is off by default, and deliberately not on: a request line is the one
+	// place where a path could carry something an operator did not mean to keep.
+	// The implementation never records the query string -- /authorize carries the
+	// client's state and PKCE challenge there, and the client's callback carries
+	// an authorization code -- but a setting that defaults to on would be a
+	// decision taken for the operator rather than by them.
+	//
+	// It exists because a deployment that cannot see a 400, a 403 or a 429 leaves
+	// its operator guessing at which of them a client received, and that guessing
+	// costs hours.
+	LogRequests bool
+
 	// EnableWriteTools enables the write tool tier. Remotely it is only half of
 	// the gate: a granted OAuth write scope is also required.
 	EnableWriteTools bool

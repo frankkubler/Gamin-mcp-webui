@@ -48,6 +48,10 @@ services:
       GARMIN_MCP_SMTP_TLS: ${GARMIN_MCP_SMTP_TLS:-starttls}
       GARMIN_MCP_DASHBOARD_URL: ${GARMIN_MCP_DASHBOARD_URL:-}
       GARMIN_MCP_LOG_LEVEL: ${GARMIN_MCP_LOG_LEVEL:-info}
+      # Une ligne par requete HTTP : methode, chemin, code, duree. Jamais la
+      # chaine de requete, qui transporte les codes d'autorisation. Inactif par
+      # defaut ; a allumer le temps d'un diagnostic.
+      GARMIN_MCP_LOG_REQUESTS: ${GARMIN_MCP_LOG_REQUESTS:-false}
       GARMIN_MCP_LOG_FORMAT: ${GARMIN_MCP_LOG_FORMAT:-json}
 
       # --- Interface web ---

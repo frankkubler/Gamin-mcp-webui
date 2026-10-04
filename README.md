@@ -666,6 +666,7 @@ remplacés par des soulignés, préfixée `GARMIN_MCP_`. La liste complète est 
 | `GARMIN_MCP_ENABLE_WRITE_TOOLS` | `false` | sert les outils d'écriture. Sans portée accordée, ils restent refusés — voir « Écrire les séances ». |
 | `GARMIN_MCP_ENABLE_DESTRUCTIVE_TOOLS` | `false` | sert les outils de suppression. Exige aussi `ENABLE_WRITE_TOOLS` et une portée `:destructive`. |
 | `GARMIN_MCP_REQUIRE_ACCOUNT_APPROVAL` | `true` | ajout de ce dépôt : un nouveau compte attend une validation dans l'interface. |
+| `GARMIN_MCP_LOG_REQUESTS` | `false` | une ligne de journal par requête HTTP : méthode, chemin, code de retour, durée. **Jamais la chaîne de requête**, qui transporte les codes d'autorisation. À allumer le temps d'un diagnostic. |
 
 ### Conteneur
 

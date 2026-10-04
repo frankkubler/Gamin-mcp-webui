@@ -404,7 +404,15 @@ func (r *remoteDeployment) mount() (http.Handler, error) {
 	mux.Handle(loginweb.RemoteAuthorizePath, loginHandler)
 	mux.Handle(loginPath, loginHandler)
 	mux.Handle(loginSubtreePath, loginHandler)
-	return mux, nil
+
+	// The request log wraps everything, including the routes above that answer
+	// without reaching a handler of ours, because a refusal is exactly what an
+	// operator cannot otherwise see. Off unless asked for: logRequests returns the
+	// handler unchanged for a nil logger.
+	if !r.deps.cfg.LogRequests {
+		return mux, nil
+	}
+	return logRequests(mux, r.deps.events), nil
 }
 
 // close releases what the deployment opened. It is safe on a partially built

@@ -58,6 +58,7 @@ const (
 	keySafetyDelay            = "safety-delay"
 	keyLogLevel               = "log-level"
 	keyLogFormat              = "log-format"
+	keyLogRequests            = "log-requests"
 )
 
 // The keys inside one entry of the OAuth client registry. They are sub-keys of
@@ -272,6 +273,10 @@ var settingTable = [...]setting{
 	{
 		key: keyLogLevel, flag: keyLogLevel, kind: kindString, def: DefaultLogLevel,
 		usage: "log level: debug, info, warn, or error",
+	},
+	{
+		key: keyLogRequests, flag: keyLogRequests, kind: kindBool, def: false,
+		usage: "log one line per HTTP request: method, path, status, duration -- never the query string",
 	},
 	{
 		key: keyLogFormat, flag: keyLogFormat, kind: kindString, def: DefaultLogFormat,
