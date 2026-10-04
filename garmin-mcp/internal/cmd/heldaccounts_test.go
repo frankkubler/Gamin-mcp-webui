@@ -84,6 +84,46 @@ func TestAConfigurationThatCannotSendIsRefusedAtStartUp(t *testing.T) {
 	}
 }
 
+// TestAnAbsentSecretSaysWhereItWasLookedFor is the mutant this test catches:
+// forwarding securefile's error unchanged leaves an operator with
+// `inspect "/run/secrets": file does not exist` and a file that plainly exists on
+// their host, with nothing in the message to suggest the path is read inside the
+// container. That exact message cost a real deployment an evening.
+func TestAnAbsentSecretSaysWhereItWasLookedFor(t *testing.T) {
+	t.Parallel()
+
+	cfg := mailConfig(t)
+	cfg.SMTPSecretFile = "/run/secrets/smtp"
+
+	_, err := newMailer(cfg, nil)
+	if err == nil {
+		t.Fatal("a secret that is not there was accepted")
+	}
+	message := err.Error()
+	if !strings.Contains(message, cfg.SMTPSecretFile) {
+		t.Errorf("the refusal does not name the path it looked for: %v", err)
+	}
+	for _, want := range []string{"smtp-secret-file", "own filesystem", "mount"} {
+		if !strings.Contains(message, want) {
+			t.Errorf("the refusal does not mention %q: %v", want, err)
+		}
+	}
+
+	// A mode or owner fault is a different mistake and keeps securefile's own
+	// wording. The discriminator is this file's added sentence, not the word
+	// "mount": securefile's permission message names an fsGroup mount recursion
+	// itself, which an earlier version of this test mistook for the advice above.
+	cfg = mailConfig(t)
+	if err := os.Chmod(cfg.SMTPSecretFile, 0o644); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	if _, err := newMailer(cfg, nil); err == nil {
+		t.Fatal("a world-readable secret was accepted")
+	} else if strings.Contains(err.Error(), "own filesystem") {
+		t.Errorf("a permission fault was reported as a missing mount: %v", err)
+	}
+}
+
 func TestAWorldReadableSecretIsRefused(t *testing.T) {
 	t.Parallel()
 

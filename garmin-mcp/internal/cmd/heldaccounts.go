@@ -19,6 +19,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"strings"
 
@@ -42,6 +43,25 @@ type heldAccounts struct {
 
 // The assertion this type exists for.
 var _ loginweb.HeldAccounts = (*heldAccounts)(nil)
+
+// smtpSecretError reports a secret this deployment could not read.
+//
+// The cause names the path and the fault, never the content: securefile reports what
+// it refused, not what it read. An absent path gets one sentence added, because
+// "file does not exist" is true and useless to an operator looking at the file on
+// their host — smtp-secret-file names a path inside THIS process's filesystem, so in
+// a container the file arrives only through a mount, and the message that cost a real
+// deployment an evening named a directory the operator had never heard of. Every
+// other cause keeps securefile's own wording, which already says what was wrong with
+// the mode, the owner, or the type.
+func smtpSecretError(path string, cause error) error {
+	if errors.Is(cause, fs.ErrNotExist) {
+		return fmt.Errorf("reading the SMTP secret: %s is not there. smtp-secret-file "+
+			"names a path inside this process's own filesystem, so a containerised "+
+			"deployment has to mount the file at that path: %w", path, cause)
+	}
+	return fmt.Errorf("reading the SMTP secret %s: %w", path, cause)
+}
 
 // newHeldAccounts binds the adapter to the store and the mailer.
 //
@@ -122,9 +142,7 @@ func newMailer(cfg config.Config, logger *slog.Logger) (*notify.Mailer, error) {
 	if mail.Configured() && cfg.SMTPSecretFile != "" {
 		content, err := securefile.ReadFile(cfg.SMTPSecretFile, maxSMTPSecretBytes)
 		if err != nil {
-			// The cause names the path and the permission fault, never the
-			// content: securefile reports what it refused, not what it read.
-			return nil, fmt.Errorf("reading the SMTP secret: %w", err)
+			return nil, smtpSecretError(cfg.SMTPSecretFile, err)
 		}
 		mail.Secret = strings.TrimSpace(string(content))
 	}

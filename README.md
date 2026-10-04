@@ -353,6 +353,37 @@ fichier doit appartenir au compte de service et n'être lisible que par lui, sin
 démarrage échoue. Avec Gmail, générez un **mot de passe d'application** (la validation
 en deux étapes doit être active sur le compte) et écrivez-le seul dans ce fichier.
 
+#### Le chemin est celui du conteneur, pas celui de la machine
+
+`GARMIN_MCP_SMTP_SECRET_FILE` est lu **dans le système de fichiers du serveur**. Créer
+le fichier sur l'hôte ne le met pas à cet endroit : il faut le monter, et la ligne est
+commentée par défaut dans `docker-compose.yml`. Sans ce montage, le démarrage échoue
+sur `/run/secrets` introuvable et le conteneur s'éteint — ce qui est le comportement
+voulu, un déploiement qui croit notifier et ne notifie pas étant pire.
+
+```bash
+mkdir -p ./secrets
+printf '%s' 'xxxxxxxxxxxxxxxx' > ./secrets/smtp   # le mot de passe d'application, sans les espaces
+sudo chown 10001:10001 ./secrets/smtp             # le compte de service du conteneur
+chmod 600 ./secrets/smtp
+```
+
+Puis décommentez dans `docker-compose.yml` :
+
+```yaml
+      - ./secrets/smtp:/run/secrets/smtp:ro
+```
+
+et `docker compose up -d`. Trois précisions qui évitent les essais successifs :
+
+- **N'écrivez pas le fichier dans `/run` de l'hôte** : c'est un *tmpfs*, il disparaît au
+  redémarrage. Mettez-le à côté du `compose.yml`, ou dans `/etc`.
+- **Seul le fichier est contrôlé** — type, mode sans aucun bit groupe ou autre,
+  propriétaire égal au compte qui exécute le serveur. Le répertoire `/run/secrets` que
+  le montage crée dans le conteneur appartient à `root`, et c'est sans conséquence.
+- **Une fin de ligne est tolérée** : le serveur fait un `TrimSpace`. Les espaces
+  *internes* du mot de passe Gmail, non — retirez-les.
+
 Trois garanties, chacune couverte par un test :
 
 - **Un envoi ne retarde ni ne fait échouer un login.** Il part en tâche de fond, sur un
