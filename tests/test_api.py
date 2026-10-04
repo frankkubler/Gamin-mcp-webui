@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import base64
+from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -20,14 +22,14 @@ AUTH = {"Authorization": BASIC}
 
 
 @pytest.fixture
-def client(database_path: Path) -> TestClient:
+def client(database_path: Path, clock: Callable[[], datetime]) -> TestClient:
     settings = Settings(
         database_path=str(database_path),
         username=USERNAME,
         password=PASSWORD,
         api_token=TOKEN,
     )
-    with TestClient(create_app(settings)) as test_client:
+    with TestClient(create_app(settings, now=clock)) as test_client:
         yield test_client
 
 
@@ -187,11 +189,11 @@ def test_aucune_donnee_sensible_dans_les_reponses(client: TestClient) -> None:
         assert forbidden not in corpus
 
 
-def test_base_absente_donne_503(tmp_path: Path) -> None:
+def test_base_absente_donne_503(tmp_path: Path, clock: Callable[[], datetime]) -> None:
     settings = Settings(
         database_path=str(tmp_path / "absente.db"), username=USERNAME, password=PASSWORD
     )
-    with TestClient(create_app(settings)) as client:
+    with TestClient(create_app(settings, now=clock)) as client:
         response = client.get("/api/accounts", headers=AUTH)
         assert response.status_code == 503
         assert "Base introuvable" in response.json()["detail"]
@@ -204,21 +206,21 @@ def test_page_html_servie(client: TestClient) -> None:
     assert "Comptes garmin-mcp" in response.text
 
 
-def test_masquage_active(database_path: Path) -> None:
+def test_masquage_active(database_path: Path, clock: Callable[[], datetime]) -> None:
     settings = Settings(
         database_path=str(database_path),
         username=USERNAME,
         password=PASSWORD,
         mask_emails=True,
     )
-    with TestClient(create_app(settings)) as client:
+    with TestClient(create_app(settings, now=clock)) as client:
         payload = client.get("/api/accounts", headers=AUTH).json()
     assert payload["items"][0]["email"] == "a***@e***.fr"
 
 
-def test_acces_anonyme_explicite(database_path: Path) -> None:
+def test_acces_anonyme_explicite(database_path: Path, clock: Callable[[], datetime]) -> None:
     settings = Settings(database_path=str(database_path), allow_anonymous=True)
-    with TestClient(create_app(settings)) as client:
+    with TestClient(create_app(settings, now=clock)) as client:
         assert client.get("/api/accounts").status_code == 200
 
 

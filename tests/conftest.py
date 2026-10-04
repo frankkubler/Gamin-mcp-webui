@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -27,6 +28,19 @@ def ago(**kwargs: float) -> str:
 @pytest.fixture
 def now() -> datetime:
     return NOW
+
+
+@pytest.fixture
+def clock() -> Callable[[], datetime]:
+    """Horloge figée sur NOW, à passer à ``create_app``.
+
+    Les tests d'API passent par l'application, qui lit l'heure réelle par défaut.
+    Sans cette horloge, la suite ne reste verte que pendant la fenêtre « actif »
+    qui suit NOW : au-delà, un compte semé « il y a deux heures » est toujours à
+    deux heures de NOW, mais à des semaines de maintenant.
+    """
+
+    return lambda: NOW
 
 
 @pytest.fixture

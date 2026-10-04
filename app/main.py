@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import csv
 import io
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -36,8 +36,17 @@ SORTABLE_FIELDS = {
 }
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
-    """Construit l'application. Les tests injectent leurs propres reglages."""
+def create_app(
+    settings: Settings | None = None, *, now: Callable[[], datetime] | None = None
+) -> FastAPI:
+    """Construit l'application. Les tests injectent leurs propres reglages.
+
+    ``now`` est l'horloge que les vues lisent pour classer un compte. Elle est un
+    parametre plutot qu'un reglage : ce n'est pas une valeur d'exploitation, et rien
+    dans l'environnement ne doit pouvoir la deplacer. Par defaut c'est l'heure reelle ;
+    un test la fige sur l'instant dont ses donnees derivent, sans quoi la suite ne
+    serait verte que pendant la fenetre « actif » qui suit la date de ses fixtures.
+    """
 
     resolved = settings or load_settings()
 
@@ -57,6 +66,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url="/api/openapi.json",
     )
     app.state.settings = resolved
+    app.state.now = now or (lambda: datetime.now(UTC))
     app.state.database = Database(
         resolved.database_path, snapshot_ttl_seconds=resolved.snapshot_ttl_seconds
     )
@@ -92,6 +102,7 @@ def _accounts(request: Request) -> list[dict[str, Any]]:
     with database.connect() as connection:
         return queries.list_accounts(
             connection,
+            now=request.app.state.now(),
             active_days=settings.active_days,
             idle_days=settings.idle_days,
             mask_emails=settings.mask_emails,
@@ -153,6 +164,7 @@ def _register_routes(app: FastAPI) -> None:
         settings: Settings = request.app.state.settings
         return queries.summarize(
             _accounts(request),
+            now=request.app.state.now(),
             active_days=settings.active_days,
             idle_days=settings.idle_days,
         )
@@ -292,6 +304,7 @@ def _register_routes(app: FastAPI) -> None:
             detail = queries.get_account(
                 connection,
                 principal_id,
+                now=request.app.state.now(),
                 active_days=settings.active_days,
                 idle_days=settings.idle_days,
                 mask_emails=settings.mask_emails,
