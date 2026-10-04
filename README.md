@@ -298,6 +298,76 @@ consentement. La notice de confidentialité, elle, n'a pas à changer — elle d
 le client reçoit un jeton « limité aux permissions affichées sur cette page », ce qui
 reste exact quelles que soient ces permissions.
 
+## Connecter ChatGPT à côté de Claude
+
+Un déploiement peut servir plusieurs clients MCP. Tout ce que demande un nouveau client
+est **additif** : une entrée de plus dans le registre OAuth, sans toucher aux autres.
+Mesuré sur un déploiement réel, avec les deux clients déclarés ensemble :
+
+| Vérification | Résultat |
+| ------------ | -------- |
+| `/authorize` pour `claude-web-desktop` et pour `chatgpt` | `303 → /login` chacun, indépendamment |
+| `scopes_supported` avec les deux clients | inchangé tant que les deux déclarent les mêmes portées |
+| requête MCP **sans** en-tête `Origin`, liste blanche renseignée | **200** — c'est le cas d'un client MCP |
+| `Origin: https://claude.ai`, liste blanche contenant les deux | 200 |
+| `Origin: https://mechant.test` | 403 |
+
+La troisième ligne est celle qui protège l'existant : un client MCP n'envoie pas
+d'`Origin`, et une requête qui n'en porte pas passe que la liste soit vide ou non.
+C'est écrit dans `internal/mcpserver/httporigin.go` (« a request without Origin is
+fine ») et couvert en amont par le cas « absent Origin is a standards-compliant
+non-browser client » de `TestOriginAllowlistGovernsBrowserRequests`.
+
+### Les deux réglages
+
+```
+GARMIN_MCP_OAUTH_CLIENTS=[{"id":"claude-web-desktop", … inchangé … },
+ {"id":"chatgpt","name":"ChatGPT","redirect-uris":["<URI copiée dans ChatGPT>"],
+  "scopes":["garmin:read","garmin:write"],
+  "resources":["<exactement GARMIN_MCP_PUBLIC_URL>"],"public":true}]
+GARMIN_MCP_ALLOWED_ORIGINS=https://chatgpt.com,https://claude.ai
+```
+
+Trois points où l'on se trompe :
+
+- **L'URI de redirection se copie, ne se devine pas.** Elle est dans les réglages
+  avancés du connecteur ChatGPT ; la correspondance est exacte à l'octet, et ChatGPT
+  utilise parfois un callback propre au connecteur.
+- **`resources` doit valoir exactement `GARMIN_MCP_PUBLIC_URL`**, un `/mcp` en trop ou
+  en moins suffit à faire refuser l'autorisation avec `invalid_target`.
+- **Vérifiez que Claude marche toujours *avant* d'essayer ChatGPT**, pour savoir ce qui
+  a changé si quelque chose casse.
+
+### Si ChatGPT refuse
+
+| Symptôme | Cause | Correctif |
+| -------- | ----- | --------- |
+| `invalid_target` dans l'URL de retour | ChatGPT n'envoie pas le paramètre `resource` (RFC 8707) | côté serveur seulement ; c'est une protection contre la confusion d'audience, à peser |
+| `invalid_scope` | portée absente ou d'un autre nom | ajoutez ce nom aux `scopes` du client `chatgpt` **seul** |
+| `redirect_uri is not registered` | URI devinée | copiez-la depuis ChatGPT |
+| pas de champ Client ID dans ChatGPT | il exige l'enregistrement dynamique (RFC 7591), que ce serveur n'offre pas | décision de conception, voir ci-dessous |
+| `400 … protocol version` dans les journaux | le point ci-dessous | — |
+
+**Le blocage connu, et non levé.** Le serveur annonce `2026-07-28` et refuse une
+`initialize` qui la déclare :
+
+```
+initialize 2026-07-28  →  400  only supported on stateless HTTP servers
+initialize 2025-11-25  →  200       2025-06-18 → 200       2025-03-26 → 200
+```
+
+Claude passe parce qu'il propose une version plus ancienne. Le SDK prévoit une
+échappatoire — `server/discover` est explicitement exempté de ce refus — mais rien ici
+ne prouve que ChatGPT l'emprunte. Le lever demanderait de passer le transport en
+*stateless*, ce qui change la sémantique de session pour **tous** les clients et casse
+la confirmation des outils destructifs : à ne faire que derrière un réglage, par défaut
+à l'état actuel, et après mesure.
+
+**L'enregistrement dynamique** n'est pas offert, et c'est une position du serveur amont,
+pas un oubli : un client existe parce qu'un exploitant l'a écrit dans la configuration.
+L'ajouter soulèverait des questions d'exploitation — qui peut s'enregistrer, à quelle
+cadence, faut-il une validation — qui appartiennent à l'exploitant du déploiement.
+
 ## La validation des comptes
 
 Par défaut, **un nouveau compte n'est utilisable qu'une fois validé dans l'interface**.
@@ -559,6 +629,7 @@ remplacés par des soulignés, préfixée `GARMIN_MCP_`. La liste complète est 
 | `GARMIN_MCP_BIND_ADDRESS` | `0.0.0.0:8180` | écoute dans le conteneur. |
 | `GARMIN_MCP_ALLOW_INSECURE_HTTP` | `false` | autorise une écoute et une origine en clair hors boucle locale. Ne rend jamais un émetteur en clair acceptable. |
 | `GARMIN_MCP_TRUSTED_PROXY_CIDRS` | vide | réseaux dont les en-têtes `X-Forwarded-*` sont crus. |
+| `GARMIN_MCP_ALLOWED_ORIGINS` | vide | origines autorisées à appeler l'endpoint MCP depuis un navigateur, séparées par des virgules. Vide refuse toute requête portant un `Origin` ; une requête qui n'en porte pas passe dans les deux cas. |
 | `GARMIN_MCP_TLS_CERT_FILE` / `_KEY_FILE` | — | le serveur termine le TLS lui-même. |
 | `GARMIN_MCP_SELF_SIGNED_TLS` | `0` | ajout de cette image : fabrique un certificat auto-signé dans `/data/tls` pour un essai local. |
 | `GARMIN_MCP_DATABASE_PATH` | `/data/garmin.db` | base SQLite, partagée avec l'interface. |
